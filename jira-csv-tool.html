@@ -265,6 +265,24 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
   </div>
 
   <div class="panel">
+    <div class="panel-head">🖥️ CORS 프록시 실행 방법 (필수)</div>
+    <div class="panel-body" style="font-size:13px;color:#aaa;line-height:1.8">
+      <p style="color:#fbbf24;margin-bottom:8px">Jira API 연동을 사용하려면 로컬 CORS 프록시를 먼저 실행해야 합니다.</p>
+      <p><strong style="color:#e0e0e0">1단계: Node.js 설치 확인</strong></p>
+      <p style="margin-bottom:4px">터미널(CMD/PowerShell)에서 아래 명령어로 설치 여부 확인:</p>
+      <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px">node -v</code>
+      <p style="margin-bottom:12px;font-size:12px">설치 안 되어 있다면 → <a href="https://nodejs.org" target="_blank">https://nodejs.org</a> 에서 LTS 버전 다운로드</p>
+      <p><strong style="color:#e0e0e0">2단계: CORS 프록시 실행</strong></p>
+      <p style="margin-bottom:4px">터미널에서 아래 명령어를 실행하세요 (Jira 도메인을 본인 것으로 변경):</p>
+      <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:8px;color:#4ade80;font-size:12px;word-break:break-all">npx local-cors-proxy --proxyUrl https://madngine.atlassian.net --port 8080</code>
+      <p style="font-size:12px;margin-bottom:12px">PowerShell에서 실행 오류가 나면 CMD에서 실행하거나: <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">cmd /c "npx local-cors-proxy --proxyUrl https://madngine.atlassian.net --port 8080"</code></p>
+      <p><strong style="color:#e0e0e0">3단계: 프록시 실행 확인</strong></p>
+      <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy Active</code> 메시지가 뜨면 성공. 이 터미널 창은 닫지 마세요.</p>
+      <p style="margin-top:8px;font-size:12px;color:#888">* 프록시는 이 도구를 사용하는 동안만 실행하면 됩니다. 브라우저를 닫아도 프록시는 별도로 종료해야 합니다 (Ctrl+C).</p>
+    </div>
+  </div>
+
+  <div class="panel">
     <div class="panel-head">📌 사용 방법</div>
     <div class="panel-body" style="font-size:13px;color:#aaa;line-height:1.8">
       <p><strong style="color:#e0e0e0">1. Jira 연결</strong> — 위에서 도메인, 이메일, API 토큰을 입력하고 연결 테스트를 실행하세요.</p>
