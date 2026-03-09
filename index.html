@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>바이브코딩 실험실</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: #0a0a1a;
+    color: #fff;
+    font-family: 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+
+  h1 {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  p {
+    font-size: 1.2rem;
+    color: #888;
+    margin-bottom: 2rem;
+  }
+
+  .start-btn {
+    padding: 16px 48px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    z-index: 10;
+  }
+
+  .start-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(102, 126, 234, 0.6);
+  }
+
+  .start-btn:active { transform: scale(0.97); }
+
+  /* ── 풀스크린 애니메이션 오버레이 ── */
+  .fx-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .fx-overlay canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── 중앙 플래시 링 ── */
+  .flash-ring {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    border: 4px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 60px rgba(102, 126, 234, 0.8), inset 0 0 60px rgba(118, 75, 162, 0.5);
+    opacity: 0;
+    z-index: 101;
+    pointer-events: none;
+  }
+
+  .flash-ring.active {
+    animation: ringExpand 1s ease-out forwards;
+  }
+
+  @keyframes ringExpand {
+    0%   { width: 0; height: 0; opacity: 1; border-width: 6px; }
+    100% { width: 200vmax; height: 200vmax; opacity: 0; border-width: 1px; }
+  }
+
+  /* ── 준비완료 팝업 ── */
+  .ready-popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    background: rgba(15, 15, 35, 0.95);
+    border: 2px solid rgba(102, 126, 234, 0.6);
+    border-radius: 20px;
+    padding: 40px 60px;
+    text-align: center;
+    z-index: 200;
+    opacity: 0;
+    pointer-events: none;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 0 80px rgba(102, 126, 234, 0.3), 0 0 200px rgba(118, 75, 162, 0.15);
+    transition: opacity 0.4s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .ready-popup.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+
+  .ready-popup .icon {
+    font-size: 3.5rem;
+    margin-bottom: 12px;
+    animation: popBounce 0.6s ease;
+  }
+
+  .ready-popup .title {
+    font-size: 2rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+  }
+
+  .ready-popup .sub {
+    color: #aaa;
+    font-size: 0.95rem;
+  }
+
+  .ready-popup .close-btn {
+    margin-top: 24px;
+    padding: 10px 36px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .ready-popup .close-btn:hover { transform: scale(1.05); }
+
+  @keyframes popBounce {
+    0%   { transform: scale(0); }
+    60%  { transform: scale(1.3); }
+    100% { transform: scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<h1>안녕하세요!</h1>
+<p>바이브코딩 실험실입니다.</p>
+<button class="start-btn" id="startBtn">시작하기</button>
+
+<!-- 애니메이션 레이어 -->
+<div class="fx-overlay"><canvas id="fxCanvas"></canvas></div>
+<div class="flash-ring" id="flashRing"></div>
+
+<!-- 준비완료 팝업 -->
+<div class="ready-popup" id="readyPopup">
+  <div class="icon">✨</div>
+  <div class="title">준비완료!</div>
+  <div class="sub">모든 준비가 완료되었습니다</div>
+  <button class="close-btn" id="closePopup">확인</button>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('fxCanvas');
+  const ctx = canvas.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const flashRing = document.getElementById('flashRing');
+  const readyPopup = document.getElementById('readyPopup');
+  const closePopup = document.getElementById('closePopup');
+
+  let particles = [];
+  let animId = null;
+  let running = false;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  /* ── 파티클 클래스 ── */
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 8;
+      this.x = cx;
+      this.y = cy;
+      this.vx = Math.cos(angle) * speed;
+      this.vy = Math.sin(angle) * speed;
+      this.life = 1;
+      this.decay = 0.005 + Math.random() * 0.015;
+      this.size = 2 + Math.random() * 4;
+      this.hue = 220 + Math.random() * 160;          // 보라~핑크~블루
+      this.trail = [];
+    }
+    update() {
+      this.trail.push({ x: this.x, y: this.y });
+      if (this.trail.length > 8) this.trail.shift();
+      this.x += this.vx;
+      this.y += this.vy;
+      this.vy += 0.04;                               // 약한 중력
+      this.life -= this.decay;
+    }
+    draw() {
+      // 잔상
+      for (let i = 0; i < this.trail.length; i++) {
+        const t = this.trail[i];
+        const a = (i / this.trail.length) * this.life * 0.4;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, this.size * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${a})`;
+        ctx.fill();
+      }
+      // 본체
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${this.hue}, 100%, 75%, ${this.life})`;
+      ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.8)`;
+      ctx.shadowBlur = 15;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  /* ── 스파크 (작은 반짝이) ── */
+  class Spark {
+    constructor() {
+      this.x = Math.random() * canvas.width;
+      this.y = Math.random() * canvas.height;
+      this.size = 1 + Math.random() * 2;
+      this.life = 1;
+      this.decay = 0.01 + Math.random() * 0.02;
+      this.hue = 40 + Math.random() * 30;            // 금색
+    }
+    update() { this.life -= this.decay; }
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${this.hue}, 100%, 80%, ${this.life})`;
+      ctx.shadowColor = `hsla(${this.hue}, 100%, 70%, 0.9)`;
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  let sparks = [];
+
+  /* ── 애니메이션 루프 ── */
+  function animate() {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(10, 10, 26, 0.15)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 파티클 지속 생성 (처음 2초)
+    if (running && performance.now() - startTime < 2000) {
+      for (let i = 0; i < 6; i++) particles.push(new Particle());
+      if (Math.random() < 0.4) sparks.push(new Spark());
+    }
+
+    particles = particles.filter(p => p.life > 0);
+    sparks = sparks.filter(s => s.life > 0);
+
+    particles.forEach(p => { p.update(); p.draw(); });
+    sparks.forEach(s => { s.update(); s.draw(); });
+
+    if (particles.length > 0 || sparks.length > 0) {
+      animId = requestAnimationFrame(animate);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  let startTime = 0;
+
+  /* ── 시작하기 클릭 ── */
+  startBtn.addEventListener('click', () => {
+    if (running) return;
+    running = true;
+    startTime = performance.now();
+    particles = [];
+    sparks = [];
+
+    // 초기 폭발 파티클
+    for (let i = 0; i < 120; i++) particles.push(new Particle());
+    for (let i = 0; i < 30; i++) sparks.push(new Spark());
+
+    // 링 이펙트
+    flashRing.classList.remove('active');
+    void flashRing.offsetWidth;
+    flashRing.classList.add('active');
+
+    // 2차 폭발 (1초 뒤)
+    setTimeout(() => {
+      for (let i = 0; i < 80; i++) particles.push(new Particle());
+      for (let i = 0; i < 20; i++) sparks.push(new Spark());
+      flashRing.classList.remove('active');
+      void flashRing.offsetWidth;
+      flashRing.classList.add('active');
+    }, 1000);
+
+    // 3차 폭발 (2초 뒤)
+    setTimeout(() => {
+      for (let i = 0; i < 60; i++) particles.push(new Particle());
+      for (let i = 0; i < 40; i++) sparks.push(new Spark());
+    }, 2000);
+
+    // 3초 후 팝업
+    setTimeout(() => {
+      readyPopup.classList.add('show');
+      running = false;
+    }, 3000);
+
+    animate();
+  });
+
+  /* ── 팝업 닫기 ── */
+  closePopup.addEventListener('click', () => {
+    readyPopup.classList.remove('show');
+  });
+})();
+</script>
+</body>
+</html>

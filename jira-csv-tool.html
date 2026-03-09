@@ -1,0 +1,2610 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jira 티켓 CSV 생성기 — LiveFlow</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f1117;color:#e0e0e0;font-family:'Segoe UI','Malgun Gothic',sans-serif;min-height:100vh}
+a{color:#667eea;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ─── Header ─── */
+.header{background:linear-gradient(135deg,#667eea,#764ba2);padding:20px 32px;display:flex;align-items:center;gap:16px}
+.header h1{font-size:22px;font-weight:700;color:#fff}
+.header .sub{font-size:13px;color:rgba(255,255,255,.75)}
+.back-link{color:rgba(255,255,255,.8);font-size:13px;margin-left:auto}
+.back-link:hover{color:#fff;text-decoration:none}
+
+/* ─── Steps ─── */
+.steps{display:flex;justify-content:center;gap:8px;padding:24px 32px 8px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:10px;background:#161822;border:1px solid #2a2d3e;cursor:pointer;transition:.2s;user-select:none}
+.step.active{background:linear-gradient(135deg,#667eea22,#764ba222);border-color:#667eea}
+.step.done{border-color:#4ade80}
+.step .num{width:26px;height:26px;border-radius:50%;background:#2a2d3e;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#888;flex-shrink:0}
+.step.active .num{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.step.done .num{background:#4ade80;color:#0f1117}
+.step .label{font-size:13px;color:#aaa}
+.step.active .label{color:#e0e0e0}
+.step.done .label{color:#4ade80}
+.step-arrow{color:#555;font-size:18px;align-self:center}
+
+/* ─── Container ─── */
+.container{max-width:1400px;margin:0 auto;padding:16px 24px 40px}
+
+/* ─── Panel ─── */
+.panel{background:#161822;border:1px solid #2a2d3e;border-radius:12px;margin-bottom:20px;overflow:hidden}
+.panel-head{padding:14px 20px;border-bottom:1px solid #2a2d3e;font-size:15px;font-weight:600;display:flex;align-items:center;gap:10px}
+.panel-head .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.panel-body{padding:20px}
+.panel-body.compact{padding:12px 20px}
+.panel.collapsible .panel-head{cursor:pointer}
+.panel.collapsible .panel-head::after{content:'';margin-left:auto;border:5px solid transparent;border-top-color:#888;transition:.2s}
+.panel.collapsible.collapsed .panel-head::after{transform:rotate(-90deg)}
+.panel.collapsible.collapsed .panel-body{display:none}
+
+/* ─── Upload ─── */
+.drop-zone{border:2px dashed #3a3d5e;border-radius:12px;padding:48px 24px;text-align:center;transition:.3s;cursor:pointer;position:relative}
+.drop-zone:hover,.drop-zone.drag{border-color:#667eea;background:#667eea11}
+.drop-zone .icon{font-size:42px;margin-bottom:12px}
+.drop-zone .main-text{font-size:16px;color:#ccc;margin-bottom:6px}
+.drop-zone .sub-text{font-size:12px;color:#777}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.file-badge{display:inline-flex;align-items:center;gap:8px;background:#1c1f2e;border:1px solid #2a2d3e;border-radius:8px;padding:8px 14px;margin-top:12px;font-size:13px}
+.file-badge .remove{cursor:pointer;color:#f87171;font-size:16px}
+
+/* ─── Form fields ─── */
+.field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;color:#aaa;font-weight:600}
+.field input,.field select,.field textarea{background:#1c1f2e;border:1px solid #2a2d3e;border-radius:6px;color:#e0e0e0;padding:8px 10px;font-size:13px;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:#667eea}
+.field textarea{resize:vertical;min-height:60px}
+.field .hint{font-size:11px;color:#666}
+.field input:disabled,.field select:disabled{opacity:.5;cursor:not-allowed}
+
+/* ─── Connection status ─── */
+.conn-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:12px}
+.conn-status.ok{background:#4ade8020;color:#4ade80}
+.conn-status.fail{background:#f8717120;color:#f87171}
+.conn-status.loading{background:#fbbf2420;color:#fbbf24}
+
+/* ─── Autocomplete ─── */
+.autocomplete-wrap{position:relative}
+.autocomplete-list{position:absolute;top:100%;left:0;right:0;background:#1c1f2e;border:1px solid #2a2d3e;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;z-index:10;display:none}
+.autocomplete-list.show{display:block}
+.autocomplete-item{padding:8px 10px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.autocomplete-item:hover{background:#2a2d3e}
+.autocomplete-item .email{color:#888;font-size:11px}
+.autocomplete-item .avatar{width:24px;height:24px;border-radius:50%;background:#2a2d3e}
+
+/* ─── Table ─── */
+.tbl-wrap{overflow-x:auto;max-height:600px;overflow-y:auto;border-radius:8px;border:1px solid #2a2d3e}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{position:sticky;top:0;z-index:2}
+th{background:#1c1f2e;padding:10px 12px;text-align:left;font-weight:600;color:#aaa;border-bottom:1px solid #2a2d3e;white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid #1c1f2e;vertical-align:top}
+tr:hover td{background:#1c1f2e55}
+td input[type="text"],td textarea{width:100%;background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;color:#e0e0e0;padding:6px 8px;font-size:12px;font-family:inherit}
+td textarea{resize:vertical;min-height:40px}
+td input[type="text"]:focus,td textarea:focus{outline:none;border-color:#667eea}
+td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:pointer}
+.row-num{color:#666;font-size:12px;min-width:24px;text-align:center}
+
+/* ─── Category Tabs ─── */
+.cat-tabs{display:flex;gap:2px;margin-bottom:16px;flex-wrap:wrap}
+.cat-tab{padding:10px 20px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:.2s;display:flex;align-items:center;gap:8px;background:#1c1f2e;color:#aaa;border:1px solid #2a2d3e}
+.cat-tab.active{color:#fff}
+.cat-tab.cat-open.active{background:#4ade8018;border-color:#4ade80;color:#4ade80}
+.cat-tab.cat-data.active{background:#fbbf2418;border-color:#fbbf24;color:#fbbf24}
+.cat-tab.cat-later.active{background:#f8717118;border-color:#f87171;color:#f87171}
+.cat-tab .count{background:#2a2d3e;padding:2px 8px;border-radius:10px;font-size:11px}
+.cat-tab.cat-open.active .count{background:#4ade8030}
+.cat-tab.cat-data.active .count{background:#fbbf2430}
+.cat-tab.cat-later.active .count{background:#f8717130}
+
+/* ─── Description preview ─── */
+.desc-toggle{cursor:pointer;color:#667eea;font-size:11px;user-select:none}
+.desc-preview{background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;padding:8px;margin-top:4px;font-size:11px;white-space:pre-wrap;line-height:1.5;color:#aaa;max-height:200px;overflow-y:auto}
+
+/* ─── Buttons ─── */
+.btn{padding:10px 22px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;font-family:inherit}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
+.btn-primary:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.btn-secondary{background:#2a2d3e;color:#ccc}
+.btn-secondary:hover:not(:disabled){background:#3a3d5e}
+.btn-danger{background:#f8717133;color:#f87171;border:1px solid #f8717155}
+.btn-danger:hover:not(:disabled){background:#f8717155}
+.btn-success{background:#4ade8033;color:#4ade80;border:1px solid #4ade8055}
+.btn-success:hover:not(:disabled){background:#4ade8055}
+.btn-sm{padding:6px 14px;font-size:12px;border-radius:6px}
+.btn-group{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* ─── CSV Preview ─── */
+.csv-preview{background:#0f1117;border:1px solid #2a2d3e;border-radius:8px;padding:14px;max-height:400px;overflow:auto;font-size:12px;font-family:'Consolas','Courier New',monospace;white-space:pre;color:#aaa;line-height:1.5}
+
+/* ─── Summary Cards ─── */
+.summary-cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.scard{background:#1c1f2e;border:1px solid #2a2d3e;border-radius:8px;padding:14px 20px;flex:1;min-width:120px;text-align:center}
+.scard .val{font-size:28px;font-weight:700;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.scard .lbl{font-size:11px;color:#888;margin-top:2px}
+.scard.green .val{background:linear-gradient(135deg,#4ade80,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.scard.yellow .val{background:linear-gradient(135deg,#fbbf24,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.scard.red .val{background:linear-gradient(135deg,#f87171,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+
+/* ─── Mode Tabs ─── */
+.mode-tabs{display:flex;justify-content:center;gap:4px;padding:16px 32px 0;background:#0f1117}
+.mode-tab{padding:12px 28px;border:none;border-radius:12px 12px 0 0;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:.2s;background:#161822;color:#888;border:1px solid #2a2d3e;border-bottom:none;position:relative;top:1px}
+.mode-tab.active{background:#0f1117;color:#e0e0e0;border-color:#667eea;border-bottom:1px solid #0f1117}
+.mode-tab:hover:not(.active){color:#bbb;background:#1c1f2e}
+
+/* ─── Feature Item List ─── */
+.week-mode{display:flex;gap:16px;align-items:center;margin-bottom:10px}
+.week-mode label{display:flex;align-items:center;gap:6px;font-size:13px;color:#ccc;cursor:pointer}
+.week-mode input[type="radio"]{accent-color:#667eea;width:15px;height:15px;cursor:pointer}
+.feature-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.feature-item{display:flex;align-items:center;gap:10px;background:#1c1f2e;border:1px solid #2a2d3e;border-radius:8px;padding:8px 14px;font-size:13px}
+.feature-item .feat-title{flex:1;color:#e0e0e0}
+.feature-item .feat-preview{color:#667eea;font-size:11px}
+.feature-item .feat-remove{cursor:pointer;color:#f87171;font-size:14px;padding:2px 6px;border-radius:4px}
+.feature-item .feat-remove:hover{background:#f8717122}
+
+/* ─── Group Tabs (for subtask) ─── */
+.grp-tabs{display:flex;gap:2px;margin-bottom:16px;flex-wrap:wrap}
+.grp-tab{padding:10px 20px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:.2s;display:flex;align-items:center;gap:8px;background:#1c1f2e;color:#aaa;border:1px solid #2a2d3e}
+.grp-tab.active{color:#fff;background:#667eea22;border-color:#667eea}
+.grp-tab .count{background:#2a2d3e;padding:2px 8px;border-radius:10px;font-size:11px}
+.grp-tab.active .count{background:#667eea30}
+
+/* ─── Misc ─── */
+.hidden{display:none!important}
+.mt-8{margin-top:8px}
+.mt-12{margin-top:12px}
+.mt-16{margin-top:16px}
+.mb-12{margin-bottom:12px}
+.text-muted{color:#777;font-size:12px}
+.select-all-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa}
+
+/* ─── Jira Submit Result ─── */
+.submit-result{background:#161822;border:1px solid #2a2d3e;border-radius:10px;padding:16px 20px;font-size:13px}
+.submit-result h4{margin-bottom:10px;font-size:14px;display:flex;align-items:center;gap:8px}
+.submit-result .result-ok{color:#4ade80}
+.submit-result .result-fail{color:#f87171}
+.submit-result .result-list{max-height:300px;overflow-y:auto}
+.submit-result .result-item{padding:6px 0;border-bottom:1px solid #1c1f2e;display:flex;align-items:center;gap:10px;font-size:12px}
+.submit-result .result-item:last-child{border:none}
+.submit-result .result-item .key{color:#667eea;font-weight:600}
+.submit-result .result-item .key a{color:#667eea}
+.submit-progress{margin:12px 0}
+.submit-progress .bar-wrap{background:#2a2d3e;border-radius:6px;height:8px;overflow:hidden}
+.submit-progress .bar-fill{height:100%;background:linear-gradient(135deg,#667eea,#764ba2);transition:width .3s;border-radius:6px}
+.toast{position:fixed;bottom:24px;right:24px;background:#1c1f2e;border:1px solid #2a2d3e;border-radius:10px;padding:12px 20px;font-size:13px;z-index:100;animation:slideIn .3s;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.toast.success{border-color:#4ade80;color:#4ade80}
+.toast.error{border-color:#f87171;color:#f87171}
+@keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+/* ─── Duplicate Alert Modal ─── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s}
+.modal{background:#161822;border:1px solid #fbbf24;border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.modal h3{font-size:16px;color:#fbbf24;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.modal p{font-size:13px;color:#aaa;margin-bottom:16px;line-height:1.6}
+.modal .dup-group{background:#1c1f2e;border:1px solid #2a2d3e;border-radius:8px;padding:12px;margin-bottom:10px}
+.modal .dup-group .dup-name{font-weight:600;color:#fbbf24;font-size:14px;margin-bottom:6px}
+.modal .dup-entry{font-size:12px;color:#aaa;padding:4px 0;display:flex;align-items:center;gap:8px}
+.modal .dup-entry .dup-cat{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.modal .dup-entry .dup-cat.open{background:#4ade8020;color:#4ade80}
+.modal .dup-entry .dup-cat.data{background:#fbbf2420;color:#fbbf24}
+.modal .dup-entry .dup-cat.later{background:#f8717120;color:#f87171}
+.modal .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Jira 티켓 CSV 생성기</h1>
+  <span class="sub">마일스톤 / 이벤트·패키지 / 하위 티켓 → Jira 일괄 등록 CSV</span>
+  <a href="index.html" class="back-link">← LiveFlow</a>
+</div>
+
+<!-- ═══ MODE TABS ═══ -->
+<div class="mode-tabs">
+  <button class="mode-tab active" data-mode="settings">초기 세팅</button>
+  <button class="mode-tab" data-mode="milestone">마일스톤 티켓</button>
+  <button class="mode-tab" data-mode="event">이벤트/패키지</button>
+  <button class="mode-tab" data-mode="subtask">하위 티켓</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- MODE 0: INITIAL SETTINGS                            -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="mode-settings">
+<div class="container">
+
+  <div class="panel">
+    <div class="panel-head">🔗 Jira 연결 설정 <span id="jiraConnStatus"></span></div>
+    <div class="panel-body">
+      <div class="field-grid">
+        <div class="field">
+          <label>Jira 도메인</label>
+          <input type="text" id="jiraDomain" placeholder="yoursite.atlassian.net">
+          <span class="hint">https:// 제외하고 입력</span>
+        </div>
+        <div class="field">
+          <label>이메일</label>
+          <input type="email" id="jiraEmail" placeholder="you@company.com">
+        </div>
+        <div class="field">
+          <label>API 토큰</label>
+          <input type="password" id="jiraToken" placeholder="Atlassian API 토큰">
+          <span class="hint"><a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">토큰 발급 →</a></span>
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label>CORS 프록시 (브라우저 CORS 차단 우회)</label>
+          <select id="corsMode" style="max-width:400px">
+            <option value="direct">직접 연결 (CORS 허용 환경)</option>
+            <option value="local" selected>로컬 프록시 (localhost:8080)</option>
+            <option value="custom">커스텀 프록시 URL</option>
+          </select>
+          <input type="text" id="corsCustomUrl" class="hidden mt-8" placeholder="https://your-cors-proxy.example.com/">
+          <span class="hint">Jira Cloud는 브라우저 CORS를 차단합니다. 로컬 프록시 실행: <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">npx local-cors-proxy --proxyUrl https://DOMAIN.atlassian.net --port 8080</code></span>
+        </div>
+      </div>
+      <div class="btn-group mt-12">
+        <button class="btn btn-secondary btn-sm" id="btnJiraTest">연결 테스트</button>
+        <button class="btn btn-secondary btn-sm" id="btnJiraSave">설정 저장</button>
+        <button class="btn btn-danger btn-sm" id="btnJiraClear">설정 초기화</button>
+        <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#fbbf24;cursor:pointer">
+          <input type="checkbox" id="jiraTestMode" style="accent-color:#fbbf24"> 테스트 모드 (실제 티켓 생성 안함)
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">📌 사용 방법</div>
+    <div class="panel-body" style="font-size:13px;color:#aaa;line-height:1.8">
+      <p><strong style="color:#e0e0e0">1. Jira 연결</strong> — 위에서 도메인, 이메일, API 토큰을 입력하고 연결 테스트를 실행하세요.</p>
+      <p><strong style="color:#e0e0e0">2. 마일스톤 티켓</strong> — 엑셀 기능 문서를 업로드하여 마일스톤 별 스토리 티켓을 일괄 생성합니다.</p>
+      <p><strong style="color:#e0e0e0">3. 이벤트/패키지</strong> — 정기 업데이트 이벤트/패키지 스토리 티켓 6종 + 추가 피쳐를 생성합니다.</p>
+      <p><strong style="color:#e0e0e0">4. 하위 티켓</strong> — 이벤트/패키지에서 생성한 스토리의 부서별 하위 작업 18종을 생성합니다.</p>
+    </div>
+  </div>
+
+</div>
+</div><!-- /mode-settings -->
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- MODE 1: MILESTONE TICKETS (existing)               -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="mode-milestone" class="hidden">
+<div class="steps" id="stepBar">
+  <div class="step active" data-step="1"><span class="num">1</span><span class="label">설정 & 업로드</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="2"><span class="num">2</span><span class="label">결과 확인 & 편집</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="3"><span class="num">3</span><span class="label">CSV 다운로드</span></div>
+</div>
+
+<div class="container">
+
+  <!-- ══════ STEP 1 ══════ -->
+  <div id="sec1">
+
+    <!-- File Upload -->
+    <div class="panel">
+      <div class="panel-head">📄 엑셀 파일 업로드</div>
+      <div class="panel-body">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileIn" accept=".xlsx,.xls">
+          <div class="icon">📁</div>
+          <div class="main-text">엑셀 파일을 드래그하거나 클릭하여 업로드</div>
+          <div class="sub-text">지원: .xlsx, .xls</div>
+        </div>
+        <div id="fileBadge" class="hidden"></div>
+
+        <div id="sheetSelect" class="hidden mt-12">
+          <div class="field" style="max-width:500px">
+            <label>시트 선택</label>
+            <select id="fSheet"></select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Milestone & Common Settings -->
+    <div class="panel">
+      <div class="panel-head">⚙️ 마일스톤 & 공통 설정</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>대상 마일스톤 *</label>
+            <input type="text" id="fMilestone" placeholder="예: M24 또는 24">
+            <span class="hint">엑셀 헤더의 마일스톤 컬럼명과 매칭</span>
+          </div>
+          <div class="field">
+            <label>이슈 유형</label>
+            <select id="fIssueType">
+              <option value="스토리">스토리 (Story)</option>
+              <option value="작업">작업 (Task)</option>
+              <option value="버그">버그 (Bug)</option>
+              <option value="에픽">에픽 (Epic)</option>
+              <option value="하위 작업">하위 작업 (Sub-task)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>우선 순위</label>
+            <select id="fPriority">
+              <option value="Highest">Highest</option>
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+              <option value="Lowest">Lowest</option>
+            </select>
+          </div>
+          <div class="field autocomplete-wrap">
+            <label>담당자</label>
+            <input type="text" id="fAssignee" placeholder="이름 검색 또는 Account ID 입력" autocomplete="off">
+            <div class="autocomplete-list" id="assigneeList"></div>
+            <span class="hint" id="assigneeHint">Jira 연결 시 자동완성 가능</span>
+          </div>
+          <div class="field">
+            <label>프로젝트 (수정버전 조회용)</label>
+            <select id="fProject" disabled>
+              <option value="">Jira 연결 필요</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>수정버전 (Fix Version)</label>
+            <select id="fFixVersion" disabled>
+              <option value="">프로젝트 선택 필요</option>
+            </select>
+            <input type="text" id="fFixVersionManual" placeholder="수동 입력: [NCGL] M24_260421_정기 업데이트 (빌드)">
+            <span class="hint">Jira 연결 시 드롭다운, 미연결 시 수동 입력</span>
+          </div>
+          <div class="field">
+            <label>상위항목 (Epic Key, 선택)</label>
+            <input type="text" id="fParent" placeholder="예: PROJ-123">
+          </div>
+        </div>
+        <div class="btn-group mt-16">
+          <button class="btn btn-primary" id="btnParse" disabled>파싱 시작</button>
+          <span class="text-muted" id="parseHint">엑셀 파일을 업로드하고 마일스톤을 입력하세요</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ STEP 2 ══════ -->
+  <div id="sec2" class="hidden">
+    <div class="cat-tabs" id="catTabs">
+      <button class="cat-tab cat-open active" data-cat="open">Day1 오픈 <span class="count" id="countOpen">0</span></button>
+      <button class="cat-tab cat-data" data-cat="data">데이터 오픈 <span class="count" id="countData">0</span></button>
+      <button class="cat-tab cat-later" data-cat="later">이후 오픈 <span class="count" id="countLater">0</span></button>
+      <button class="cat-tab" data-cat="all" style="margin-left:auto">전체 <span class="count" id="countAll">0</span></button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        📝 티켓 목록
+        <div class="actions">
+          <button class="btn btn-secondary btn-sm" id="btnAddRow">+ 행 추가</button>
+          <button class="btn btn-danger btn-sm" id="btnDelChecked">선택 삭제</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:40px"><div class="select-all-wrap"><input type="checkbox" id="chkAll"><span>전체</span></div></th>
+                <th style="width:36px">#</th>
+                <th style="width:80px">분류</th>
+                <th style="min-width:300px">요약 (Summary)</th>
+                <th style="min-width:200px">설명 (Description)</th>
+              </tr>
+            </thead>
+            <tbody id="editBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="btnBackTo1">← 이전</button>
+      <button class="btn btn-primary" id="btnToStep3">CSV 생성 →</button>
+    </div>
+  </div>
+
+  <!-- ══════ STEP 3 ══════ -->
+  <div id="sec3" class="hidden">
+    <div class="summary-cards" id="summaryCards"></div>
+
+    <div class="panel">
+      <div class="panel-head">📋 CSV 미리보기</div>
+      <div class="panel-body">
+        <div class="csv-preview" id="csvPreview"></div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="btnBackTo2">← 이전</button>
+      <button class="btn btn-success" id="btnDownload">⬇ CSV 다운로드</button>
+      <button class="btn btn-secondary" id="btnCopy">📋 클립보드 복사</button>
+      <button class="btn btn-primary" id="btnJiraSubmit" style="margin-left:auto">JIRA 티켓 자동 일괄 생성</button>
+    </div>
+    <div id="jiraSubmitResult" class="hidden mt-12"></div>
+  </div>
+
+</div>
+</div><!-- /mode-milestone -->
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- MODE 2: EVENT/PACKAGE STORY TICKETS                -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="mode-event" class="hidden">
+<div class="steps" id="evStepBar">
+  <div class="step active" data-step="1"><span class="num">1</span><span class="label">설정 & 입력</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="2"><span class="num">2</span><span class="label">결과 확인 & 편집</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="3"><span class="num">3</span><span class="label">CSV 다운로드</span></div>
+</div>
+<div class="container">
+
+  <!-- EV STEP 1 -->
+  <div id="ev-sec1">
+
+    <!-- Fix Version & Auto Extract -->
+    <div class="panel">
+      <div class="panel-head">⚙️ 수정버전 & 기본 설정</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>프로젝트</label>
+            <select id="evProject" disabled>
+              <option value="">Jira 연결 필요</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>수정버전 (Fix Version) *</label>
+            <select id="evFixVersion" disabled>
+              <option value="">프로젝트 선택 필요</option>
+            </select>
+            <input type="text" id="evFixVersionManual" placeholder="수동 입력: [NCGL] M24_260428_정기 업데이트">
+          </div>
+          <div class="field">
+            <label>마일스톤 (자동 추출)</label>
+            <input type="text" id="evMilestone" placeholder="M24" readonly style="opacity:.7">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>업데이트 주기</label>
+            <div class="week-mode">
+              <label><input type="radio" name="evWeekMode" value="2" checked> 2주 단위 업데이트</label>
+              <label><input type="radio" name="evWeekMode" value="1"> 1주 단위 업데이트</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>날짜 (자동 추출, 수정 가능)</label>
+            <input type="text" id="evDate" placeholder="예: 4/21, 4/28">
+            <span class="hint">2주 모드: 자동으로 +7일 계산. 공휴일 시 대체 날짜 입력 팝업</span>
+          </div>
+          <div class="field">
+            <label>우선 순위</label>
+            <select id="evPriority">
+              <option value="Highest">Highest</option>
+              <option value="High">High</option>
+              <option value="Medium" selected>Medium</option>
+              <option value="Low">Low</option>
+              <option value="Lowest">Lowest</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Ticket Input -->
+    <div class="panel">
+      <div class="panel-head">📝 추가 피쳐 입력</div>
+      <div class="panel-body">
+        <p style="font-size:12px;color:#888;margin-bottom:12px">피쳐명을 입력하면 자동으로 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">[M#] 피쳐명</code> 형식의 스토리 티켓이 생성됩니다.</p>
+
+        <!-- Single input -->
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div class="field" style="flex:1;margin:0">
+            <label>피쳐명</label>
+            <input type="text" id="evFeatureInput" placeholder="예: 시험의 탑 시즌 초기화">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="evBtnAddFeature" style="height:37px">+ 추가</button>
+        </div>
+
+        <!-- Bulk input toggle -->
+        <div class="mt-12">
+          <span class="desc-toggle" onclick="this.nextElementSibling.classList.toggle('hidden');this.textContent=this.nextElementSibling.classList.contains('hidden')?'▶ 대량 입력 (붙여넣기)':'▼ 대량 입력 접기'">▶ 대량 입력 (붙여넣기)</span>
+          <div class="hidden mt-8">
+            <textarea id="evBulkInput" rows="6" style="width:100%;background:#1c1f2e;border:1px solid #2a2d3e;border-radius:6px;color:#e0e0e0;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical" placeholder="한 줄에 하나씩 입력:&#10;신규 의상 (질주 본능)&#10;월드 던전 시즌 38&#10;미궁"></textarea>
+            <button class="btn btn-secondary btn-sm mt-8" id="evBtnBulkAdd">일괄 추가</button>
+          </div>
+        </div>
+
+        <!-- Feature list preview -->
+        <div id="evFeatureList" class="feature-list"></div>
+      </div>
+    </div>
+
+    <div class="btn-group mt-16">
+      <button class="btn btn-primary" id="evBtnGenerate">생성 →</button>
+      <span class="text-muted" id="evGenHint">수정버전을 선택하세요</span>
+    </div>
+  </div>
+
+  <!-- EV STEP 2 -->
+  <div id="ev-sec2" class="hidden">
+    <div class="panel">
+      <div class="panel-head">
+        📝 스토리 티켓 목록
+        <div class="actions">
+          <button class="btn btn-secondary btn-sm" id="evBtnAddRow">+ 행 추가</button>
+          <button class="btn btn-danger btn-sm" id="evBtnDelChecked">선택 삭제</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:40px"><div class="select-all-wrap"><input type="checkbox" id="evChkAll"><span>전체</span></div></th>
+                <th style="width:36px">#</th>
+                <th style="min-width:300px">요약 (Summary)</th>
+                <th style="min-width:200px">설명 (Description)</th>
+                <th style="width:200px">담당자</th>
+              </tr>
+            </thead>
+            <tbody id="evEditBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="evBackTo1">← 이전</button>
+      <button class="btn btn-primary" id="evToStep3">CSV 생성 →</button>
+    </div>
+  </div>
+
+  <!-- EV STEP 3 -->
+  <div id="ev-sec3" class="hidden">
+    <div class="summary-cards" id="evSummaryCards"></div>
+    <div class="panel">
+      <div class="panel-head">📋 CSV 미리보기</div>
+      <div class="panel-body">
+        <div class="csv-preview" id="evCsvPreview"></div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="evBackTo2">← 이전</button>
+      <button class="btn btn-success" id="evBtnDownload">⬇ CSV 다운로드</button>
+      <button class="btn btn-secondary" id="evBtnCopy">📋 클립보드 복사</button>
+      <button class="btn btn-primary" id="evBtnJiraSubmit" style="margin-left:auto">JIRA 티켓 자동 일괄 생성</button>
+    </div>
+    <div id="evJiraSubmitResult" class="hidden mt-12"></div>
+  </div>
+
+</div>
+</div><!-- /mode-event -->
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- MODE 3: SUB-TASK TICKETS                           -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="mode-subtask" class="hidden">
+<div class="steps" id="stStepBar">
+  <div class="step active" data-step="1"><span class="num">1</span><span class="label">설정 & 상위 이슈</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="2"><span class="num">2</span><span class="label">결과 확인 & 편집</span></div>
+  <span class="step-arrow">›</span>
+  <div class="step" data-step="3"><span class="num">3</span><span class="label">CSV 다운로드</span></div>
+</div>
+<div class="container">
+
+  <!-- ST STEP 1 -->
+  <div id="st-sec1">
+
+    <!-- Fix Version & Auto Extract -->
+    <div class="panel">
+      <div class="panel-head">⚙️ 수정버전 & 기본 설정</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>프로젝트</label>
+            <select id="stProject" disabled>
+              <option value="">Jira 연결 필요</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>수정버전 (Fix Version) *</label>
+            <select id="stFixVersion" disabled>
+              <option value="">프로젝트 선택 필요</option>
+            </select>
+            <input type="text" id="stFixVersionManual" placeholder="수동 입력: [NCGL] M24_260428_정기 업데이트">
+          </div>
+          <div class="field">
+            <label>마일스톤 (자동 추출)</label>
+            <input type="text" id="stMilestone" placeholder="M24" readonly style="opacity:.7">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>업데이트 주기</label>
+            <div class="week-mode">
+              <label><input type="radio" name="stWeekMode" value="2" checked> 2주 단위 업데이트</label>
+              <label><input type="radio" name="stWeekMode" value="1"> 1주 단위 업데이트</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>날짜 (자동 추출, 수정 가능)</label>
+            <input type="text" id="stDate" placeholder="예: 4/21, 4/28">
+            <span class="hint">2주 모드: 자동으로 +7일 계산. 공휴일 시 대체 날짜 입력 팝업</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Parent Issue IDs -->
+    <div class="panel">
+      <div class="panel-head">🔗 상위 이슈 ID 입력</div>
+      <div class="panel-body">
+        <p style="font-size:12px;color:#888;margin-bottom:12px">케이스 2에서 생성한 스토리 티켓의 Jira 이슈 ID를 입력하세요. (예: NCGL-12345)</p>
+        <div class="field-grid">
+          <div class="field">
+            <label>📦 패키지 업데이트 이슈 ID *</label>
+            <input type="text" id="stParentPkg" placeholder="예: NCGL-12345">
+          </div>
+          <div class="field">
+            <label>🎪 이벤트 업데이트 이슈 ID *</label>
+            <input type="text" id="stParentEvt" placeholder="예: NCGL-12346">
+          </div>
+          <div class="field">
+            <label>🎨 이벤트/패키지 아이콘 리소스 이슈 ID *</label>
+            <input type="text" id="stParentIcon" placeholder="예: NCGL-12347">
+          </div>
+          <div class="field">
+            <label>🌐 업데이트 번역 적용 이슈 ID *</label>
+            <input type="text" id="stParentTrans" placeholder="예: NCGL-12350">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group mt-16">
+      <button class="btn btn-primary" id="stBtnGenerate">생성 →</button>
+      <span class="text-muted" id="stGenHint">수정버전과 상위 이슈 ID를 입력하세요</span>
+    </div>
+  </div>
+
+  <!-- ST STEP 2 -->
+  <div id="st-sec2" class="hidden">
+    <div class="grp-tabs" id="stGrpTabs">
+      <button class="grp-tab active" data-grp="all">전체 <span class="count" id="stCountAll">0</span></button>
+      <button class="grp-tab" data-grp="pkg">📦 패키지 <span class="count" id="stCountPkg">0</span></button>
+      <button class="grp-tab" data-grp="evt">🎪 이벤트 <span class="count" id="stCountEvt">0</span></button>
+      <button class="grp-tab" data-grp="icon">🎨 아이콘 <span class="count" id="stCountIcon">0</span></button>
+      <button class="grp-tab" data-grp="trans">🌐 번역 <span class="count" id="stCountTrans">0</span></button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        📝 하위 티켓 목록
+        <div class="actions">
+          <button class="btn btn-secondary btn-sm" id="stBtnAddRow">+ 행 추가</button>
+          <button class="btn btn-danger btn-sm" id="stBtnDelChecked">선택 삭제</button>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:40px"><div class="select-all-wrap"><input type="checkbox" id="stChkAll"><span>전체</span></div></th>
+                <th style="width:36px">#</th>
+                <th style="width:60px">유형</th>
+                <th style="width:130px">상위항목</th>
+                <th style="min-width:300px">요약 (Summary)</th>
+                <th style="min-width:200px">설명 (Description)</th>
+                <th style="width:200px">담당자</th>
+              </tr>
+            </thead>
+            <tbody id="stEditBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="stBackTo1">← 이전</button>
+      <button class="btn btn-primary" id="stToStep3">CSV 생성 →</button>
+    </div>
+  </div>
+
+  <!-- ST STEP 3 -->
+  <div id="st-sec3" class="hidden">
+    <div class="summary-cards" id="stSummaryCards"></div>
+    <div class="panel">
+      <div class="panel-head">📋 CSV 미리보기</div>
+      <div class="panel-body">
+        <div class="csv-preview" id="stCsvPreview"></div>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="stBackTo2">← 이전</button>
+      <button class="btn btn-success" id="stBtnDownload">⬇ CSV 다운로드</button>
+      <button class="btn btn-secondary" id="stBtnCopy">📋 클립보드 복사</button>
+      <button class="btn btn-primary" id="stBtnJiraSubmit" style="margin-left:auto">JIRA 티켓 자동 일괄 생성</button>
+    </div>
+    <div id="stJiraSubmitResult" class="hidden mt-12"></div>
+  </div>
+
+</div>
+</div><!-- /mode-subtask -->
+
+<script>
+(() => {
+'use strict';
+
+/* ═══════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════ */
+let workbook = null;
+let items = [];         // {summary, desc, category, checked, specName}
+let csvOutput = '';
+let jiraConnected = false;
+let curCat = 'open';
+
+/* ═══════════════════════════════════════════
+   DOM REFS
+   ═══════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const $stepBar     = $('stepBar');
+const $sec1 = $('sec1'), $sec2 = $('sec2'), $sec3 = $('sec3');
+const $dropZone    = $('dropZone');
+const $fileIn      = $('fileIn');
+const $fileBadge   = $('fileBadge');
+const $sheetSelect = $('sheetSelect');
+const $fSheet      = $('fSheet');
+const $fMilestone  = $('fMilestone');
+const $fIssueType  = $('fIssueType');
+const $fPriority   = $('fPriority');
+const $fAssignee   = $('fAssignee');
+const $fProject    = $('fProject');
+const $fFixVersion = $('fFixVersion');
+const $fFixVersionManual = $('fFixVersionManual');
+const $fParent     = $('fParent');
+const $btnParse    = $('btnParse');
+const $editBody    = $('editBody');
+const $csvPreview  = $('csvPreview');
+const $summaryCards= $('summaryCards');
+
+/* ═══════════════════════════════════════════
+   STEP NAVIGATION
+   ═══════════════════════════════════════════ */
+let curStep = 1;
+
+function goStep(n) {
+  curStep = n;
+  [$sec1, $sec2, $sec3].forEach((s, i) => s.classList.toggle('hidden', i + 1 !== n));
+  $stepBar.querySelectorAll('.step').forEach(el => {
+    const s = +el.dataset.step;
+    el.classList.toggle('active', s === n);
+    el.classList.toggle('done', s < n);
+  });
+  if (n === 2) renderEditTable();
+  if (n === 3) generateCSV();
+  window.scrollTo(0, 0);
+}
+
+$stepBar.querySelectorAll('.step').forEach(el => {
+  el.addEventListener('click', () => {
+    const s = +el.dataset.step;
+    if (s < curStep) goStep(s);
+    else if (s === 2 && items.length > 0) goStep(2);
+    else if (s === 3 && items.length > 0) goStep(3);
+  });
+});
+
+/* ═══════════════════════════════════════════
+   COLLAPSIBLE PANEL
+   ═══════════════════════════════════════════ */
+function togglePanel(head) {
+  head.closest('.panel').classList.toggle('collapsed');
+}
+
+/* ═══════════════════════════════════════════
+   JIRA API INTEGRATION
+   ═══════════════════════════════════════════ */
+function loadJiraSettings() {
+  const saved = localStorage.getItem('jira_settings');
+  if (saved) {
+    try {
+      const s = JSON.parse(saved);
+      $('jiraDomain').value = s.domain || '';
+      $('jiraEmail').value = s.email || '';
+      $('jiraToken').value = s.token || '';
+      if (s.corsMode) $('corsMode').value = s.corsMode;
+      if (s.corsCustomUrl) $('corsCustomUrl').value = s.corsCustomUrl;
+      $('corsCustomUrl').classList.toggle('hidden', $('corsMode').value !== 'custom');
+    } catch {}
+  }
+}
+
+function saveJiraSettings() {
+  localStorage.setItem('jira_settings', JSON.stringify({
+    domain: $('jiraDomain').value.trim(),
+    email: $('jiraEmail').value.trim(),
+    token: $('jiraToken').value.trim(),
+    corsMode: $('corsMode').value,
+    corsCustomUrl: $('corsCustomUrl').value.trim()
+  }));
+  showToast('설정이 저장되었습니다', 'success');
+}
+
+function clearJiraSettings() {
+  localStorage.removeItem('jira_settings');
+  $('jiraDomain').value = '';
+  $('jiraEmail').value = '';
+  $('jiraToken').value = '';
+  jiraConnected = false;
+  updateJiraStatus('');
+  $fProject.disabled = true;
+  $fProject.innerHTML = '<option value="">Jira 연결 필요</option>';
+  $fFixVersion.disabled = true;
+  $fFixVersion.innerHTML = '<option value="">프로젝트 선택 필요</option>';
+  showToast('설정이 초기화되었습니다', 'success');
+}
+
+function getJiraAuth() {
+  const domain = $('jiraDomain').value.trim();
+  const email = $('jiraEmail').value.trim();
+  const token = $('jiraToken').value.trim();
+  if (!domain || !email || !token) return null;
+  return { domain, email, token, auth: btoa(`${email}:${token}`) };
+}
+
+function getProxyUrl(domain, path) {
+  const mode = $('corsMode').value;
+  if (mode === 'direct') {
+    return `https://${domain}${path}`;
+  } else if (mode === 'local') {
+    // local-cors-proxy uses /proxy prefix by default
+    return `http://localhost:8080/proxy${path}`;
+  } else {
+    // custom proxy: prepend proxy URL to target
+    const proxy = $('corsCustomUrl').value.trim().replace(/\/+$/, '');
+    return `${proxy}/https://${domain}${path}`;
+  }
+}
+
+async function jiraFetch(path) {
+  const cfg = getJiraAuth();
+  if (!cfg) throw new Error('Jira 인증 정보가 없습니다');
+  const url = getProxyUrl(cfg.domain, path);
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Basic ${cfg.auth}`,
+      'Accept': 'application/json'
+    }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  return res.json();
+}
+
+function updateJiraStatus(type, msg) {
+  const el = $('jiraConnStatus');
+  if (!type) { el.innerHTML = ''; return; }
+  const cls = type === 'ok' ? 'ok' : type === 'fail' ? 'fail' : 'loading';
+  const icon = type === 'ok' ? '✓' : type === 'fail' ? '✕' : '⟳';
+  el.innerHTML = `<span class="conn-status ${cls}">${icon} ${msg || ''}</span>`;
+}
+
+async function testJiraConnection() {
+  updateJiraStatus('loading', '연결 중...');
+  try {
+    const data = await jiraFetch('/rest/api/3/myself');
+    jiraConnected = true;
+    updateJiraStatus('ok', `연결됨: ${data.displayName}`);
+    saveJiraSettings();
+    await loadJiraProjects();
+    await loadJiraIssueTypes();
+  } catch (e) {
+    jiraConnected = false;
+    let msg = e.message;
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      const mode = $('corsMode').value;
+      if (mode === 'direct') {
+        msg = 'CORS 차단됨 — "로컬 프록시" 모드로 변경 후 프록시를 실행하세요';
+      } else if (mode === 'local') {
+        msg = '로컬 프록시 연결 실패 — npx local-cors-proxy 실행 여부를 확인하세요';
+      } else {
+        msg = '프록시 연결 실패 — 프록시 URL을 확인하세요';
+      }
+    }
+    updateJiraStatus('fail', msg);
+  }
+}
+
+async function loadJiraProjects() {
+  try {
+    const data = await jiraFetch('/rest/api/3/project');
+    $fProject.disabled = false;
+    $fProject.innerHTML = '<option value="">프로젝트 선택</option>' +
+      data.map(p => `<option value="${esc(p.key)}">${esc(p.key)} — ${esc(p.name)}</option>`).join('');
+  } catch {}
+}
+
+async function loadJiraVersions(projectKey) {
+  if (!projectKey) {
+    $fFixVersion.disabled = true;
+    $fFixVersion.innerHTML = '<option value="">프로젝트 선택 필요</option>';
+    return;
+  }
+  try {
+    const data = await jiraFetch(`/rest/api/3/project/${projectKey}/versions`);
+    $fFixVersion.disabled = false;
+    const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
+    $fFixVersion.innerHTML = '<option value="">수정버전 선택</option>' +
+      unreleased.map(v => `<option value="${escAttr(v.name)}">${esc(v.name)}</option>`).join('');
+  } catch {}
+}
+
+async function loadJiraIssueTypes() {
+  try {
+    const data = await jiraFetch('/rest/api/3/issuetype');
+    const types = data.filter(t => !t.subtask);
+    if (types.length > 0) {
+      $fIssueType.innerHTML = types.map(t =>
+        `<option value="${escAttr(t.name)}" ${t.name === '스토리' || t.name === 'Story' ? 'selected' : ''}>${esc(t.name)}</option>`
+      ).join('');
+    }
+  } catch {}
+}
+
+// Assignee autocomplete
+let assigneeTimer = null;
+$fAssignee.addEventListener('input', () => {
+  clearTimeout(assigneeTimer);
+  const q = $fAssignee.value.trim();
+  if (!jiraConnected || q.length < 2) {
+    $('assigneeList').classList.remove('show');
+    return;
+  }
+  assigneeTimer = setTimeout(async () => {
+    try {
+      const data = await jiraFetch(`/rest/api/3/user/search?query=${encodeURIComponent(q)}&maxResults=10`);
+      const list = $('assigneeList');
+      if (data.length === 0) { list.classList.remove('show'); return; }
+      list.innerHTML = data.map(u =>
+        `<div class="autocomplete-item" data-id="${escAttr(u.accountId)}">
+          <img class="avatar" src="${u.avatarUrls?.['24x24'] || ''}" onerror="this.style.display='none'">
+          <span>${esc(u.displayName)}</span>
+          <span class="email">${esc(u.emailAddress || u.accountId)}</span>
+        </div>`
+      ).join('');
+      list.classList.add('show');
+    } catch {}
+  }, 300);
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.autocomplete-wrap')) $('assigneeList').classList.remove('show');
+});
+
+$('assigneeList').addEventListener('click', e => {
+  const item = e.target.closest('.autocomplete-item');
+  if (!item) return;
+  $fAssignee.value = item.dataset.id;
+  $('assigneeHint').textContent = item.querySelector('span').textContent;
+  $('assigneeList').classList.remove('show');
+});
+
+$fProject.addEventListener('change', () => loadJiraVersions($fProject.value));
+
+// CORS mode toggle
+$('corsMode').addEventListener('change', () => {
+  $('corsCustomUrl').classList.toggle('hidden', $('corsMode').value !== 'custom');
+});
+
+$('btnJiraTest').addEventListener('click', testJiraConnection);
+$('btnJiraSave').addEventListener('click', saveJiraSettings);
+$('btnJiraClear').addEventListener('click', clearJiraSettings);
+
+/* ═══════════════════════════════════════════
+   FILE UPLOAD
+   ═══════════════════════════════════════════ */
+$dropZone.addEventListener('dragover', e => { e.preventDefault(); $dropZone.classList.add('drag'); });
+$dropZone.addEventListener('dragleave', () => $dropZone.classList.remove('drag'));
+$dropZone.addEventListener('drop', e => { e.preventDefault(); $dropZone.classList.remove('drag'); handleFile(e.dataTransfer.files[0]); });
+$fileIn.addEventListener('change', () => { if ($fileIn.files[0]) handleFile($fileIn.files[0]); });
+
+function handleFile(file) {
+  if (!file) return;
+  showFileBadge(file.name);
+  const reader = new FileReader();
+  reader.onload = e => {
+    workbook = XLSX.read(e.target.result, { type: 'array' });
+    populateSheetSelect();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showFileBadge(name) {
+  $fileBadge.classList.remove('hidden');
+  $fileBadge.innerHTML = `<div class="file-badge">📎 ${esc(name)} <span class="remove" id="removeFile">✕</span></div>`;
+  $('removeFile').addEventListener('click', () => {
+    $fileBadge.classList.add('hidden');
+    $fileIn.value = '';
+    workbook = null;
+    $sheetSelect.classList.add('hidden');
+    checkParseReady();
+  });
+}
+
+function populateSheetSelect() {
+  $sheetSelect.classList.remove('hidden');
+  $fSheet.innerHTML = workbook.SheetNames.map((n, i) =>
+    `<option value="${i}">${esc(n)}</option>`
+  ).join('');
+
+  // Auto-select sheet matching milestone input
+  const ms = normalizeMilestone($fMilestone.value);
+  if (ms) autoSelectSheet(ms);
+  checkParseReady();
+}
+
+function autoSelectSheet(ms) {
+  const num = ms.replace(/^M/i, '');
+  for (let i = 0; i < workbook.SheetNames.length; i++) {
+    if (workbook.SheetNames[i].includes(`M${num}`)) {
+      $fSheet.value = i;
+      break;
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════
+   PARSE READINESS
+   ═══════════════════════════════════════════ */
+function checkParseReady() {
+  const ready = workbook && normalizeMilestone($fMilestone.value);
+  $btnParse.disabled = !ready;
+  $('parseHint').textContent = ready ? '' : '엑셀 파일을 업로드하고 마일스톤을 입력하세요';
+}
+
+$fMilestone.addEventListener('input', () => {
+  const ms = normalizeMilestone($fMilestone.value);
+  if (ms && workbook) autoSelectSheet(ms);
+  checkParseReady();
+});
+
+function normalizeMilestone(val) {
+  val = val.trim();
+  if (!val) return '';
+  if (/^\d+$/.test(val)) return `M${val}`;
+  if (/^M\d+$/i.test(val)) return val.toUpperCase();
+  return val;
+}
+
+/* ═══════════════════════════════════════════
+   EXCEL PARSING — CORE LOGIC
+   ═══════════════════════════════════════════ */
+$btnParse.addEventListener('click', parseExcel);
+
+function parseExcel() {
+  const ms = normalizeMilestone($fMilestone.value);
+  if (!workbook || !ms) return;
+
+  const sheetIdx = +$fSheet.value;
+  const ws = workbook.Sheets[workbook.SheetNames[sheetIdx]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  // 1. Find header row
+  const headerIdx = findHeaderRow(rows);
+  if (headerIdx < 0) {
+    showToast('헤더 행을 찾을 수 없습니다 (NO, 스펙 컬럼 필요)', 'error');
+    return;
+  }
+  const header = rows[headerIdx];
+
+  // 2. Find key columns
+  const specCol = findCol(header, '스펙');
+  const subSpecCol = specCol + 1; // L column (next to spec)
+  const detailCol = findCol(header, '상세');
+  if (specCol < 0) {
+    showToast('스펙 컬럼을 찾을 수 없습니다', 'error');
+    return;
+  }
+
+  // 3. Find milestone columns + 구분 column for filtering
+  const msNum = ms.replace(/^M/i, '');
+  const msCols = findMilestoneCols(header, msNum, specCol);
+  if (!msCols.open && !msCols.data && msCols.later.length === 0) {
+    showToast(`${ms} 관련 컬럼을 찾을 수 없습니다`, 'error');
+    return;
+  }
+
+  // 4. Group rows by spec
+  const groups = groupBySpec(rows, headerIdx, specCol, subSpecCol, detailCol);
+
+  // 5. Categorize and build items
+  items = [];
+  const nextMs = `M${parseInt(msNum) + 1}`;
+
+  for (const grp of groups) {
+    const category = classifyGroup(grp, msCols);
+    if (!category) continue; // not in any milestone column
+
+    const specRaw = grp.specName;
+    const specName = stripMilestonePrefix(specRaw);
+    let summary, desc;
+
+    // Build summary
+    if (category === 'open') {
+      summary = `[${ms}] ${specName}`;
+    } else if (category === 'data') {
+      summary = `[${ms}] ${specName} - 데이터 오픈 예정`;
+    } else {
+      summary = `[${ms}] ${specName} - ${nextMs} 이후 오픈 예정`;
+    }
+
+    // Build description
+    desc = buildDescription(specName, grp, category, ms, nextMs);
+
+    items.push({ summary, desc, category, checked: true, specName, origSpec: specRaw });
+  }
+
+  if (items.length === 0) {
+    showToast(`${ms}에 해당하는 항목이 없습니다`, 'error');
+    return;
+  }
+
+  // Detect duplicate spec names and alert user
+  const nameMap = new Map();
+  for (const it of items) {
+    const key = it.specName;
+    if (!nameMap.has(key)) nameMap.set(key, []);
+    nameMap.get(key).push(it);
+  }
+  const duplicates = [...nameMap.entries()].filter(([, v]) => v.length > 1);
+  if (duplicates.length > 0) {
+    showDuplicateAlert(duplicates);
+  }
+
+  showToast(`${items.length}개 항목이 추출되었습니다`, 'success');
+  goStep(2);
+}
+
+function findHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i];
+    const hasNo = row.some(c => String(c).trim() === 'NO');
+    const hasSpec = row.some(c => String(c).trim() === '스펙');
+    if (hasNo && hasSpec) return i;
+  }
+  return -1;
+}
+
+function findCol(header, keyword) {
+  for (let i = 0; i < header.length; i++) {
+    if (String(header[i]).replace(/\s/g, '').includes(keyword)) return i;
+  }
+  return -1;
+}
+
+function findMilestoneCols(header, msNum, specCol) {
+  const result = { open: -1, data: -1, later: [], gubunCol: -1 };
+  const msName = `M${msNum}`;
+  let foundTarget = false;
+
+  // Find 구분 column: the last "구분" column before the spec column
+  // This column indicates merge status — items with a value like "M17 머지"
+  // were already merged and tracked in previous milestones
+  for (let i = 0; i < specCol; i++) {
+    const h = String(header[i]).replace(/\s/g, '').trim();
+    if (h === '구분') result.gubunCol = i;
+  }
+
+  for (let i = 0; i < header.length; i++) {
+    const h = String(header[i]).replace(/\s/g, '').trim();
+    if (!h) continue;
+
+    // Match exact milestone (e.g., "M24")
+    if (h === msName) {
+      result.open = i;
+      foundTarget = true;
+      continue;
+    }
+    // Match milestone data (e.g., "M24데이터" or "M24 데이터")
+    if (h === `${msName}데이터`) {
+      result.data = i;
+      continue;
+    }
+    // After target milestone, everything else is "later"
+    if (foundTarget && result.data >= 0) {
+      // Check if it looks like a milestone column (starts with M and number, or contains "이후")
+      if (/^M\d+/.test(h) || h.includes('이후')) {
+        result.later.push(i);
+      }
+    }
+  }
+  return result;
+}
+
+function groupBySpec(rows, headerIdx, specCol, subSpecCol, detailCol) {
+  const groups = [];
+  let currentGroup = null;
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const specVal = String(row[specCol] || '').trim();
+    const subSpec = String(row[subSpecCol] || '').trim();
+    const detail = String(row[detailCol] || '').trim();
+
+    // Skip completely empty rows
+    if (!specVal && !subSpec && !detail) {
+      // Check if any cell has content
+      const hasContent = row.some(c => String(c || '').trim());
+      if (!hasContent) continue;
+    }
+
+    if (specVal) {
+      // New spec group
+      currentGroup = {
+        specName: specVal,
+        rows: [{ row, idx: i, subSpec, detail }],
+        parentSubSpec: subSpec,
+        parentDetail: detail
+      };
+      groups.push(currentGroup);
+    } else if (currentGroup) {
+      // Sub-row: add to current group
+      if (subSpec || detail) {
+        currentGroup.rows.push({ row, idx: i, subSpec, detail });
+      }
+    }
+  }
+  return groups;
+}
+
+function classifyGroup(grp, msCols) {
+  // Check if any row in the group has "O" in milestone columns
+  // Priority: open > data > later
+  let hasOpen = false, hasData = false, hasLater = false;
+
+  for (const r of grp.rows) {
+    const row = r.row;
+    if (msCols.open >= 0 && String(row[msCols.open] || '').trim().toUpperCase() === 'O') hasOpen = true;
+    if (msCols.data >= 0 && String(row[msCols.data] || '').trim().toUpperCase() === 'O') hasData = true;
+    for (const li of msCols.later) {
+      if (String(row[li] || '').trim().toUpperCase() === 'O') hasLater = true;
+    }
+  }
+
+  if (hasOpen) return 'open';
+  if (hasData) return 'data';
+
+  // For "later" items: only include if 구분 column is empty
+  // Items with a merge designation (e.g., "M17 머지") were already tracked
+  // in a previous milestone and should not be duplicated
+  if (hasLater) {
+    if (msCols.gubunCol >= 0) {
+      const gubun = String(grp.rows[0].row[msCols.gubunCol] || '').trim();
+      if (gubun) return null; // already merged, skip
+    }
+    return 'later';
+  }
+  return null;
+}
+
+function stripMilestonePrefix(name) {
+  return name.replace(/^\[M\d+\]\s*/, '');
+}
+
+function buildDescription(specName, grp, category, ms, nextMs) {
+  let lines = ['[작업 내역]', specName];
+
+  // Collect sub-row details
+  const subRows = grp.rows;
+  const hasMultipleRows = subRows.length > 1 || (subRows.length === 1 && subRows[0].detail && subRows[0].subSpec);
+
+  if (hasMultipleRows) {
+    // Group sub-rows by L category
+    const categories = new Map();
+    for (const r of subRows) {
+      const cat = r.subSpec || '';
+      if (!r.detail && !r.subSpec) continue;
+      if (!categories.has(cat)) categories.set(cat, []);
+      if (r.detail) categories.set(cat, [...categories.get(cat), r.detail]);
+    }
+
+    if (categories.size > 0) {
+      lines.push('');
+      for (const [cat, details] of categories) {
+        if (cat) lines.push(`${cat})`);
+        for (const d of details) {
+          lines.push(d);
+        }
+        lines.push('');
+      }
+      // Remove trailing empty line
+      while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    }
+  }
+
+  // Add test notes based on category
+  if (category === 'data') {
+    lines.push('');
+    lines.push('[테스트 참고사항]');
+    lines.push(`해당 컨텐츠는 ${ms} 기간 중 데이터로 오픈할 컨텐츠입니다.`);
+    lines.push('기능 테스트가 완료되면 컨텐츠가 노출되지 않도록 비활성화 처리 및 컨텐츠 노출 여부 테스트가 필요합니다.');
+  } else if (category === 'later') {
+    lines.push('');
+    lines.push('[테스트 참고사항]');
+    lines.push('해당 컨텐츠는 국내 작업 머지 시 함께 머지되었으나 글로벌에서는 추후 오픈 예정입니다.');
+    lines.push(`${ms} 빌드에서는 해당 컨텐츠가 노출되면 안됩니다.  미노출되는지 여부 확인 부탁 드리겠습니다.`);
+  }
+
+  return lines.join('\n');
+}
+
+/* ═══════════════════════════════════════════
+   DUPLICATE SPEC ALERT
+   ═══════════════════════════════════════════ */
+function showDuplicateAlert(duplicates) {
+  const catLabels = { open: 'Day1 오픈', data: '데이터 오픈', later: '이후 오픈' };
+
+  const groupsHtml = duplicates.map(([name, entries]) => {
+    const entriesHtml = entries.map(it => {
+      const catCls = it.category;
+      const catLabel = catLabels[it.category] || it.category;
+      return `<div class="dup-entry">
+        <span class="dup-cat ${catCls}">${esc(catLabel)}</span>
+        <span>원본: ${esc(it.origSpec)}</span>
+      </div>`;
+    }).join('');
+    return `<div class="dup-group">
+      <div class="dup-name">"${esc(name)}" — ${entries.length}건 중복</div>
+      ${entriesHtml}
+    </div>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal">
+    <h3>⚠️ 동일 이름의 스펙이 감지되었습니다</h3>
+    <p>아래 항목들은 서로 다른 원본 스펙에서 추출되었지만, [Mxx] 접두어 제거 후 동일한 이름을 가집니다.<br>
+    의도된 중복인지 확인해주세요. Step 2에서 개별 수정/삭제가 가능합니다.</p>
+    ${groupsHtml}
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-overlay').remove()">확인, 그대로 진행</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Close on overlay click
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
+/* ═══════════════════════════════════════════
+   STEP 2: EDIT TABLE
+   ═══════════════════════════════════════════ */
+function renderEditTable() {
+  updateCounts();
+
+  const filtered = curCat === 'all'
+    ? items
+    : items.filter(it => it.category === curCat);
+
+  $editBody.innerHTML = filtered.map((it, fi) => {
+    const realIdx = curCat === 'all' ? fi : items.indexOf(it);
+    const catLabel = { open: 'Day1', data: '데이터', later: '이후' }[it.category] || '';
+    const catColor = { open: '#4ade80', data: '#fbbf24', later: '#f87171' }[it.category] || '#888';
+
+    return `<tr data-idx="${realIdx}">
+      <td><input type="checkbox" class="row-chk" ${it.checked ? 'checked' : ''}></td>
+      <td class="row-num">${realIdx + 1}</td>
+      <td>
+        <select class="edit-cat" style="color:${catColor};background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;padding:4px;font-size:11px;font-family:inherit">
+          <option value="open" ${it.category === 'open' ? 'selected' : ''} style="color:#4ade80">Day1</option>
+          <option value="data" ${it.category === 'data' ? 'selected' : ''} style="color:#fbbf24">데이터</option>
+          <option value="later" ${it.category === 'later' ? 'selected' : ''} style="color:#f87171">이후</option>
+        </select>
+      </td>
+      <td><input type="text" class="edit-summary" value="${escAttr(it.summary)}"></td>
+      <td>
+        <span class="desc-toggle" onclick="toggleDesc(this)">▶ 설명 보기/편집</span>
+        <div class="desc-preview hidden">
+          <textarea class="edit-desc" rows="6" style="width:100%;background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;color:#e0e0e0;padding:6px 8px;font-size:11px;font-family:inherit;resize:vertical;min-height:80px">${esc(it.desc)}</textarea>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.toggleDesc = function(el) {
+  const preview = el.nextElementSibling;
+  preview.classList.toggle('hidden');
+  el.textContent = preview.classList.contains('hidden') ? '▶ 설명 보기/편집' : '▼ 설명 접기';
+};
+
+function updateCounts() {
+  const open = items.filter(i => i.category === 'open').length;
+  const data = items.filter(i => i.category === 'data').length;
+  const later = items.filter(i => i.category === 'later').length;
+  $('countOpen').textContent = open;
+  $('countData').textContent = data;
+  $('countLater').textContent = later;
+  $('countAll').textContent = items.length;
+}
+
+// Category tabs
+$('catTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.cat-tab');
+  if (!tab) return;
+  curCat = tab.dataset.cat;
+  $('catTabs').querySelectorAll('.cat-tab').forEach(t => t.classList.toggle('active', t === tab));
+  syncFromTable();
+  renderEditTable();
+});
+
+// Sync edits
+$editBody.addEventListener('input', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('edit-summary')) items[idx].summary = e.target.value;
+  if (e.target.classList.contains('edit-desc')) items[idx].desc = e.target.value;
+});
+
+$editBody.addEventListener('change', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('row-chk')) items[idx].checked = e.target.checked;
+  if (e.target.classList.contains('edit-cat')) {
+    items[idx].category = e.target.value;
+    updateCounts();
+  }
+});
+
+// Select all
+$('chkAll').addEventListener('change', e => {
+  const val = e.target.checked;
+  const filtered = curCat === 'all' ? items : items.filter(i => i.category === curCat);
+  filtered.forEach(it => it.checked = val);
+  $editBody.querySelectorAll('.row-chk').forEach(cb => cb.checked = val);
+});
+
+// Add row
+$('btnAddRow').addEventListener('click', () => {
+  const ms = normalizeMilestone($fMilestone.value) || 'M??';
+  items.push({ summary: `[${ms}] `, desc: '[작업 내역]\n', category: curCat === 'all' ? 'open' : curCat, checked: true, specName: '' });
+  renderEditTable();
+  const lastInput = $editBody.querySelector('tr:last-child .edit-summary');
+  if (lastInput) lastInput.focus();
+});
+
+// Delete checked
+$('btnDelChecked').addEventListener('click', () => {
+  syncFromTable();
+  items = items.filter(it => !it.checked);
+  renderEditTable();
+  $('chkAll').checked = false;
+});
+
+function syncFromTable() {
+  $editBody.querySelectorAll('tr').forEach(tr => {
+    const idx = +tr.dataset.idx;
+    if (idx >= items.length) return;
+    items[idx].summary = tr.querySelector('.edit-summary')?.value || '';
+    const descEl = tr.querySelector('.edit-desc');
+    if (descEl) items[idx].desc = descEl.value || '';
+    items[idx].checked = tr.querySelector('.row-chk')?.checked ?? true;
+    const catEl = tr.querySelector('.edit-cat');
+    if (catEl) items[idx].category = catEl.value;
+  });
+}
+
+/* ═══════════════════════════════════════════
+   STEP 3: CSV GENERATION
+   ═══════════════════════════════════════════ */
+function generateCSV() {
+  syncFromTable();
+  const checked = items.filter(it => it.checked && it.summary.trim());
+  const selected = [
+    ...checked.filter(it => it.category === 'open'),
+    ...checked.filter(it => it.category === 'data'),
+    ...checked.filter(it => it.category === 'later'),
+  ];
+  const issueType = $fIssueType.value;
+  const priority = $fPriority.value;
+  const assignee = $fAssignee.value.trim();
+  const fixVersion = $fFixVersion.value || $fFixVersionManual.value.trim();
+  const parent = $fParent.value.trim();
+
+  const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '우선 순위', '수정버전'];
+  const csvRows = selected.map(it => [
+    issueType, parent, it.summary, it.desc, assignee, priority, fixVersion
+  ]);
+
+  csvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
+
+  // Summary cards
+  const openCount = selected.filter(i => i.category === 'open').length;
+  const dataCount = selected.filter(i => i.category === 'data').length;
+  const laterCount = selected.filter(i => i.category === 'later').length;
+
+  $summaryCards.innerHTML = `
+    <div class="scard"><div class="val">${selected.length}</div><div class="lbl">총 티켓 수</div></div>
+    <div class="scard green"><div class="val">${openCount}</div><div class="lbl">Day1 오픈</div></div>
+    <div class="scard yellow"><div class="val">${dataCount}</div><div class="lbl">데이터 오픈</div></div>
+    <div class="scard red"><div class="val">${laterCount}</div><div class="lbl">이후 오픈</div></div>
+  `;
+
+  $csvPreview.textContent = csvOutput;
+}
+
+function csvCell(val) {
+  if (val == null) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+/* ═══════════════════════════════════════════
+   DOWNLOAD / COPY
+   ═══════════════════════════════════════════ */
+$('btnDownload').addEventListener('click', () => {
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + csvOutput], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ms = normalizeMilestone($fMilestone.value) || 'tickets';
+  a.download = `${ms}_티켓_일괄등록.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('btnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText(csvOutput).then(() => {
+    showToast('클립보드에 복사되었습니다', 'success');
+  });
+});
+
+/* ═══════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════ */
+$('btnToStep3').addEventListener('click', () => { syncFromTable(); goStep(3); });
+$('btnBackTo1').addEventListener('click', () => goStep(1));
+$('btnBackTo2').addEventListener('click', () => goStep(2));
+
+/* ═══════════════════════════════════════════
+   HELPERS
+   ═══════════════════════════════════════════ */
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function showToast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+/* ═══════════════════════════════════════════
+   MODE SWITCHING
+   ═══════════════════════════════════════════ */
+let currentMode = 'settings';
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  $('mode-settings').classList.toggle('hidden', mode !== 'settings');
+  $('mode-milestone').classList.toggle('hidden', mode !== 'milestone');
+  $('mode-event').classList.toggle('hidden', mode !== 'event');
+  $('mode-subtask').classList.toggle('hidden', mode !== 'subtask');
+
+  // Sync project/version dropdowns to work tabs
+  if (jiraConnected) {
+    syncJiraToMode(mode);
+  }
+}
+
+function syncJiraToMode(mode) {
+  if (mode === 'event') {
+    syncProjectDropdown('evProject', 'evFixVersion');
+  } else if (mode === 'subtask') {
+    syncProjectDropdown('stProject', 'stFixVersion');
+    // Carry over fix version, milestone, date from Case 2 if available
+    const evVer = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+    if (evVer && !$('stFixVersionManual').value.trim()) {
+      $('stFixVersion').value = $('evFixVersion').value;
+      if (!$('stFixVersion').value) $('stFixVersionManual').value = evVer;
+    }
+    const evMs = $('evMilestone').value;
+    if (evMs && !$('stMilestone').value) $('stMilestone').value = evMs;
+    const evDate = $('evDate').value;
+    if (evDate && !$('stDate').value) $('stDate').value = evDate;
+    // Sync week mode from Case 2
+    const evWeek = document.querySelector('input[name="evWeekMode"]:checked')?.value;
+    if (evWeek) {
+      const stRadio = document.querySelector(`input[name="stWeekMode"][value="${evWeek}"]`);
+      if (stRadio) stRadio.checked = true;
+    }
+  }
+}
+
+function syncProjectDropdown(projId, verId) {
+  const srcProj = $fProject;
+  const destProj = $(projId);
+  destProj.disabled = srcProj.disabled;
+  destProj.innerHTML = srcProj.innerHTML;
+  destProj.value = srcProj.value;
+  const destVer = $(verId);
+  const srcVer = $fFixVersion;
+  destVer.disabled = srcVer.disabled;
+  destVer.innerHTML = srcVer.innerHTML;
+}
+
+document.querySelectorAll('.mode-tab').forEach(t => {
+  t.addEventListener('click', () => switchMode(t.dataset.mode));
+});
+
+/* ═══════════════════════════════════════════
+   SHARED: Fix Version → M# / Date extraction
+   ═══════════════════════════════════════════ */
+function extractFromFixVersion(versionName) {
+  // e.g. "[NCGL] M24_260428_정기 업데이트" → { ms: "M24", date: "4/28", year:2026, month:4, day:28 }
+  const msMatch = versionName.match(/M(\d+)/i);
+  const dateMatch = versionName.match(/_(\d{2})(\d{2})(\d{2})_/);
+  const ms = msMatch ? `M${msMatch[1]}` : '';
+  let date = '';
+  let year = 0, month = 0, day = 0;
+  if (dateMatch) {
+    year = 2000 + parseInt(dateMatch[1], 10);
+    month = parseInt(dateMatch[2], 10);
+    day = parseInt(dateMatch[3], 10);
+    date = `${month}/${day}`;
+  }
+  return { ms, date, year, month, day };
+}
+
+/* ── Korean public holidays 2025-2027 ── */
+const KR_HOLIDAYS = {
+  2025: [
+    {m:1,d:1,name:'신정'},{m:1,d:28,name:'설날 연휴'},{m:1,d:29,name:'설날'},{m:1,d:30,name:'설날 연휴'},
+    {m:3,d:1,name:'삼일절'},{m:3,d:3,name:'삼일절 대체공휴일'},
+    {m:5,d:5,name:'어린이날'},{m:5,d:6,name:'대체공휴일'},
+    {m:6,d:6,name:'현충일'},{m:8,d:15,name:'광복절'},
+    {m:10,d:3,name:'개천절'},{m:10,d:5,name:'추석 연휴'},{m:10,d:6,name:'추석'},{m:10,d:7,name:'추석 연휴'},{m:10,d:8,name:'추석 대체공휴일'},
+    {m:10,d:9,name:'한글날'},{m:12,d:25,name:'크리스마스'}
+  ],
+  2026: [
+    {m:1,d:1,name:'신정'},{m:2,d:16,name:'설날 연휴'},{m:2,d:17,name:'설날'},{m:2,d:18,name:'설날 연휴'},
+    {m:3,d:1,name:'삼일절'},{m:3,d:2,name:'삼일절 대체공휴일'},
+    {m:5,d:5,name:'어린이날'},{m:5,d:24,name:'부처님오신날'},{m:5,d:25,name:'부처님오신날 대체공휴일'},
+    {m:6,d:6,name:'현충일'},{m:8,d:15,name:'광복절'},
+    {m:9,d:24,name:'추석 연휴'},{m:9,d:25,name:'추석'},{m:9,d:26,name:'추석 연휴'},
+    {m:10,d:3,name:'개천절'},{m:10,d:9,name:'한글날'},{m:12,d:25,name:'크리스마스'}
+  ],
+  2027: [
+    {m:1,d:1,name:'신정'},{m:2,d:6,name:'설날 연휴'},{m:2,d:7,name:'설날'},{m:2,d:8,name:'설날 연휴'},{m:2,d:9,name:'설날 대체공휴일'},
+    {m:3,d:1,name:'삼일절'},{m:5,d:5,name:'어린이날'},{m:5,d:13,name:'부처님오신날'},
+    {m:6,d:6,name:'현충일'},{m:6,d:7,name:'현충일 대체공휴일'},
+    {m:8,d:15,name:'광복절'},{m:8,d:16,name:'광복절 대체공휴일'},
+    {m:9,d:14,name:'추석 연휴'},{m:9,d:15,name:'추석'},{m:9,d:16,name:'추석 연휴'},
+    {m:10,d:3,name:'개천절'},{m:10,d:4,name:'개천절 대체공휴일'},{m:10,d:9,name:'한글날'},
+    {m:12,d:25,name:'크리스마스'}
+  ]
+};
+
+function checkHoliday(year, month, day) {
+  const list = KR_HOLIDAYS[year];
+  if (!list) return null;
+  return list.find(h => h.m === month && h.d === day) || null;
+}
+
+function calcSecondDate(year, month, day) {
+  const d = new Date(year, month - 1, day);
+  d.setDate(d.getDate() + 7);
+  return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+}
+
+/**
+ * Build date string based on week mode.
+ * If biweekly, calculates +7 day and checks holidays.
+ * Returns the date string (e.g. "4/21, 4/28") and the extracted info.
+ */
+function buildDateForMode(prefix, year, month, day) {
+  const isBiweekly = document.querySelector(`input[name="${prefix}WeekMode"]:checked`)?.value === '2';
+  const date1 = `${month}/${day}`;
+  if (!isBiweekly) return date1;
+
+  const d2 = calcSecondDate(year, month, day);
+  let date2Str = `${d2.m}/${d2.d}`;
+
+  // Check holiday for the second date
+  const holiday = checkHoliday(d2.y, d2.m, d2.d);
+  if (holiday) {
+    const alt = prompt(`${date2Str} (${holiday.name})은 공휴일입니다.\n대체할 날짜를 입력하세요 (예: ${d2.m}/${d2.d + 1})`, `${d2.m}/${d2.d + 1}`);
+    if (alt && alt.trim()) date2Str = alt.trim();
+  }
+
+  return `${date1}, ${date2Str}`;
+}
+
+/* ═══════════════════════════════════════════
+   CASE 2: EVENT/PACKAGE STORY TICKETS
+   ═══════════════════════════════════════════ */
+let evItems = [];
+let evCsvOutput = '';
+let evCurStep = 1;
+let evExtraFeatures = []; // user-added features
+
+// Template data (from Story- 탬플릿)
+const EV_TEMPLATE = [
+  {
+    summary: '[M#] (날짜) 패키지 업데이트',
+    desc: '[작업 내역]\r\n(날짜) 패키지 업데이트 작업',
+    assignee: '712020:541f1440-27e5-4595-8915-f07c8b71f50e'
+  },
+  {
+    summary: '[M#] (날짜) 이벤트 업데이트',
+    desc: '[작업 내역]\r\n(날짜) 이벤트 업데이트 작업',
+    assignee: '712020:541f1440-27e5-4595-8915-f07c8b71f50e'
+  },
+  {
+    summary: '[M#] (날짜) 이벤트/패키지 아이콘 리소스',
+    desc: '[작업 내역]\r\n(날짜) 이벤트/패키지 아이콘 리소스 작업',
+    assignee: '712020:541f1440-27e5-4595-8915-f07c8b71f50e'
+  },
+  {
+    summary: '[M#] (날짜) 정기 업데이트 최소 입장 버전 수정',
+    desc: '[작업 내역]\r\n(날짜) 업데이트의 최소 입장 가능한 버전 값 수정\r\n\r\n\r\n최소 입력 버전 값: 추후 입력\r\n\r\n\r\n[공유 사항]\r\n위 버전 미만 값에서는 접속이 불가능하여야 합니다',
+    assignee: '712020:541f1440-27e5-4595-8915-f07c8b71f50e'
+  },
+  {
+    summary: '[M#] (날짜) 이벤트 / 패키지 관련 신규 아이템 리스트 정리',
+    desc: '[작업 내역]\r\n(날짜) 이벤트 / 패키지 관련 신규 아이템 리스트 정리',
+    assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b'
+  },
+  {
+    summary: '[M#] (날짜) 업데이트 번역 적용',
+    desc: '[작업 내역]\r\n(날짜) 업데이트 번역 적용 작업',
+    assignee: '712020:541f1440-27e5-4595-8915-f07c8b71f50e'
+  }
+];
+
+const EV_DEFAULT_ASSIGNEE = '712020:541f1440-27e5-4595-8915-f07c8b71f50e';
+
+// Step navigation for event mode
+function evGoStep(n) {
+  evCurStep = n;
+  [$('ev-sec1'), $('ev-sec2'), $('ev-sec3')].forEach((s, i) => s.classList.toggle('hidden', i + 1 !== n));
+  $('evStepBar').querySelectorAll('.step').forEach(el => {
+    const s = +el.dataset.step;
+    el.classList.toggle('active', s === n);
+    el.classList.toggle('done', s < n);
+  });
+  if (n === 2) evRenderTable();
+  if (n === 3) evGenerateCSV();
+  window.scrollTo(0, 0);
+}
+
+$('evStepBar').querySelectorAll('.step').forEach(el => {
+  el.addEventListener('click', () => {
+    const s = +el.dataset.step;
+    if (s < evCurStep) evGoStep(s);
+    else if (s === 2 && evItems.length > 0) evGoStep(2);
+    else if (s === 3 && evItems.length > 0) evGoStep(3);
+  });
+});
+
+// Fix Version change → extract M# and date
+function evHandleFixVersionChange() {
+  const ver = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+  if (!ver) return;
+  const { ms, date, year, month, day } = extractFromFixVersion(ver);
+  if (ms) $('evMilestone').value = ms;
+  if (date && year) {
+    $('evDate').value = buildDateForMode('ev', year, month, day);
+  } else if (date) {
+    $('evDate').value = date;
+  }
+  evUpdateGenHint();
+  evRenderFeatureList();
+}
+
+$('evFixVersion').addEventListener('change', evHandleFixVersionChange);
+$('evFixVersionManual').addEventListener('input', evHandleFixVersionChange);
+$('evDate').addEventListener('input', () => evRenderFeatureList());
+
+// Week mode change → recalculate date
+document.querySelectorAll('input[name="evWeekMode"]').forEach(r => {
+  r.addEventListener('change', evHandleFixVersionChange);
+});
+
+$('evProject').addEventListener('change', async () => {
+  const key = $('evProject').value;
+  if (!key) return;
+  try {
+    const data = await jiraFetch(`/rest/api/3/project/${key}/versions`);
+    const ver = $('evFixVersion');
+    ver.disabled = false;
+    const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
+    ver.innerHTML = '<option value="">수정버전 선택</option>' +
+      unreleased.map(v => `<option value="${escAttr(v.name)}">${esc(v.name)}</option>`).join('');
+  } catch {}
+});
+
+function evUpdateGenHint() {
+  const ver = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+  $('evGenHint').textContent = ver ? '' : '수정버전을 선택하세요';
+}
+
+// Feature input
+$('evBtnAddFeature').addEventListener('click', evAddSingleFeature);
+$('evFeatureInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); evAddSingleFeature(); }
+});
+
+function evAddSingleFeature() {
+  const input = $('evFeatureInput');
+  const name = input.value.trim();
+  if (!name) return;
+  evExtraFeatures.push(name);
+  input.value = '';
+  input.focus();
+  evRenderFeatureList();
+}
+
+$('evBtnBulkAdd').addEventListener('click', () => {
+  const text = $('evBulkInput').value.trim();
+  if (!text) return;
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  evExtraFeatures.push(...lines);
+  $('evBulkInput').value = '';
+  evRenderFeatureList();
+  showToast(`${lines.length}개 피쳐가 추가되었습니다`, 'success');
+});
+
+function evRenderFeatureList() {
+  const ms = $('evMilestone').value || 'M#';
+  const list = $('evFeatureList');
+  if (evExtraFeatures.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = evExtraFeatures.map((f, i) => `
+    <div class="feature-item">
+      <span class="feat-preview">[${esc(ms)}]</span>
+      <span class="feat-title">${esc(f)}</span>
+      <span class="feat-remove" data-idx="${i}" title="삭제">✕</span>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.feat-remove').forEach(el => {
+    el.addEventListener('click', () => {
+      evExtraFeatures.splice(+el.dataset.idx, 1);
+      evRenderFeatureList();
+    });
+  });
+}
+
+// Generate items
+$('evBtnGenerate').addEventListener('click', () => {
+  const ver = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+  if (!ver) { showToast('수정버전을 선택하세요', 'error'); return; }
+  const ms = $('evMilestone').value || 'M#';
+  const date = $('evDate').value.trim() || '(날짜)';
+
+  evItems = [];
+
+  // Template stories
+  for (const t of EV_TEMPLATE) {
+    evItems.push({
+      summary: t.summary.replace(/\[M#\]/g, `[${ms}]`).replace(/\(날짜 입력\)|\(날짜\)/g, date),
+      desc: t.desc.replace(/\(날짜 입력\)|\(날짜\)/g, date),
+      assignee: t.assignee,
+      checked: true,
+      isTemplate: true
+    });
+  }
+
+  // Extra features
+  for (const f of evExtraFeatures) {
+    evItems.push({
+      summary: `[${ms}] ${f}`,
+      desc: `[작업 내역]\r\n${f}`,
+      assignee: EV_DEFAULT_ASSIGNEE,
+      checked: true,
+      isTemplate: false
+    });
+  }
+
+  showToast(`${evItems.length}개 스토리 티켓이 생성되었습니다`, 'success');
+  evGoStep(2);
+});
+
+// Edit table
+function evRenderTable() {
+  const body = $('evEditBody');
+  body.innerHTML = evItems.map((it, i) => `
+    <tr data-idx="${i}">
+      <td><input type="checkbox" class="row-chk" ${it.checked ? 'checked' : ''}></td>
+      <td class="row-num">${i + 1}</td>
+      <td><input type="text" class="edit-summary" value="${escAttr(it.summary)}"></td>
+      <td>
+        <span class="desc-toggle" onclick="toggleDesc(this)">▶ 설명 보기/편집</span>
+        <div class="desc-preview hidden">
+          <textarea class="edit-desc" rows="6" style="width:100%;background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;color:#e0e0e0;padding:6px 8px;font-size:11px;font-family:inherit;resize:vertical;min-height:80px">${esc(it.desc)}</textarea>
+        </div>
+      </td>
+      <td><input type="text" class="edit-assignee" value="${escAttr(it.assignee)}" style="font-size:11px"></td>
+    </tr>
+  `).join('');
+}
+
+$('evEditBody').addEventListener('input', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('edit-summary')) evItems[idx].summary = e.target.value;
+  if (e.target.classList.contains('edit-desc')) evItems[idx].desc = e.target.value;
+  if (e.target.classList.contains('edit-assignee')) evItems[idx].assignee = e.target.value;
+});
+
+$('evEditBody').addEventListener('change', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('row-chk')) evItems[idx].checked = e.target.checked;
+});
+
+$('evChkAll').addEventListener('change', e => {
+  evItems.forEach(it => it.checked = e.target.checked);
+  $('evEditBody').querySelectorAll('.row-chk').forEach(cb => cb.checked = e.target.checked);
+});
+
+$('evBtnAddRow').addEventListener('click', () => {
+  const ms = $('evMilestone').value || 'M#';
+  evItems.push({ summary: `[${ms}] `, desc: '[작업 내역]\r\n', assignee: EV_DEFAULT_ASSIGNEE, checked: true, isTemplate: false });
+  evRenderTable();
+  const lastInput = $('evEditBody').querySelector('tr:last-child .edit-summary');
+  if (lastInput) lastInput.focus();
+});
+
+$('evBtnDelChecked').addEventListener('click', () => {
+  evSyncFromTable();
+  evItems = evItems.filter(it => !it.checked);
+  evRenderTable();
+  $('evChkAll').checked = false;
+});
+
+function evSyncFromTable() {
+  $('evEditBody').querySelectorAll('tr').forEach(tr => {
+    const idx = +tr.dataset.idx;
+    if (idx >= evItems.length) return;
+    evItems[idx].summary = tr.querySelector('.edit-summary')?.value || '';
+    const descEl = tr.querySelector('.edit-desc');
+    if (descEl) evItems[idx].desc = descEl.value || '';
+    evItems[idx].checked = tr.querySelector('.row-chk')?.checked ?? true;
+    const assigneeEl = tr.querySelector('.edit-assignee');
+    if (assigneeEl) evItems[idx].assignee = assigneeEl.value || '';
+  });
+}
+
+// CSV generation
+function evGenerateCSV() {
+  evSyncFromTable();
+  const selected = evItems.filter(it => it.checked && it.summary.trim());
+  const priority = $('evPriority').value;
+  const fixVersion = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+
+  const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '우선 순위', '수정버전'];
+  const csvRows = selected.map(it => [
+    '스토리', '', it.summary, it.desc, it.assignee, priority, fixVersion
+  ]);
+
+  evCsvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
+
+  $('evSummaryCards').innerHTML = `
+    <div class="scard"><div class="val">${selected.length}</div><div class="lbl">총 스토리 수</div></div>
+    <div class="scard green"><div class="val">${selected.filter(i => i.isTemplate).length}</div><div class="lbl">템플릿</div></div>
+    <div class="scard yellow"><div class="val">${selected.filter(i => !i.isTemplate).length}</div><div class="lbl">추가 피쳐</div></div>
+  `;
+  $('evCsvPreview').textContent = evCsvOutput;
+}
+
+$('evToStep3').addEventListener('click', () => { evSyncFromTable(); evGoStep(3); });
+$('evBackTo1').addEventListener('click', () => evGoStep(1));
+$('evBackTo2').addEventListener('click', () => evGoStep(2));
+
+$('evBtnDownload').addEventListener('click', () => {
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + evCsvOutput], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ms = $('evMilestone').value || 'event';
+  a.download = `${ms}_이벤트패키지_스토리.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('evBtnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText(evCsvOutput).then(() => showToast('클립보드에 복사되었습니다', 'success'));
+});
+
+/* ═══════════════════════════════════════════
+   CASE 3: SUB-TASK TICKETS
+   ═══════════════════════════════════════════ */
+let stItems = [];
+let stCsvOutput = '';
+let stCurStep = 1;
+let stCurGrp = 'all';
+
+// Template data (from 하위-탬플릿)
+const ST_TEMPLATE = [
+  // Package group
+  { grp: 'pkg', type: '기획', summary: '[M#] (날짜) 패키지 데이터 입력', desc: '[작업 내역]\r\n(날짜) 패키지 데이터 입력', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'pkg', type: 'UI', summary: '[M#] (날짜) 패키지 상품 관련 이미지 리소스 제작 1', desc: '[작업 내역]\r\n(날짜) 패키지 상품 관련 이미지 리소스 제작 1', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'pkg', type: 'UI', summary: '[M#] (날짜) 패키지 상품 관련 이미지 리소스 제작 2', desc: '[작업 내역]\r\n(날짜) 패키지 상품 관련 이미지 리소스 제작 2', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'pkg', type: 'UI', summary: '[M#] (날짜) 패키지 상품 관련 이미지 리소스 제작 3', desc: '[작업 내역]\r\n(날짜) 패키지 상품 관련 이미지 리소스 제작 3', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'pkg', type: 'UI', summary: '[M#] (날짜) 웹샵 관련 이미지 리소스 제작', desc: '[작업 내역]\r\n(날짜) 웹샵 관련 이미지 리소스 제작', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'pkg', type: '기획', summary: '[M#] (날짜) 패키지 관련 이미지 리소스 적용', desc: '[작업 내역]\r\n(날짜) 패키지 이미지 리소스 적용 작업', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'pkg', type: '기획', summary: '[M#] (날짜) 티켓 아이템 상점 숏컷 작업', desc: '[작업 내역]\r\n(날짜) 티켓 아이템 상점 숏컷 작업\r\n\r\n[테스트 필요 사항]\r\n해당 티켓 판매하는 상점 로우탭으로 정상 이동되는지 체크', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  // Event group
+  { grp: 'evt', type: '기획', summary: '[M#] (날짜) 출석부 데이터 입력', desc: '[작업 내역]\r\n(날짜) 출석부 데이터 입력 작업', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'evt', type: '기획', summary: '[M#] (날짜) 미션 데이터 입력', desc: '[작업 내역]\r\n(날짜) 미션 데이터 입력', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'evt', type: '기획', summary: '[M#] (날짜) 시즌 패스 추가', desc: '[작업 내역]\r\n(날짜) 시즌 패스 추가', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'evt', type: 'UI', summary: '[M#] (날짜) 시즌 패스 리소스 제작', desc: '[작업 내역]\r\n(날짜) 시즌 패스 리소스 제작', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'evt', type: '기획', summary: '[M#] (날짜) 시즌 패스 리소스 적용', desc: '[작업 내역]\r\n(날짜) 시즌 패스 리소스 적용', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'evt', type: 'UI', summary: '[M#] (날짜) 이벤트 배너 등록  - UI', desc: '[작업 내역]\r\n(날짜) 이벤트 배너 등록 작업', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'evt', type: '기획', summary: '[M#] (날짜) 이벤트 배너 등록  - 기획', desc: '[작업 내역]\r\n(날짜) 이벤트 배너 등록 작업', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  // Icon group
+  { grp: 'icon', type: '기획', summary: '[M#] (날짜) 이벤트/패키지 아이콘 발주', desc: '[작업 내역]\r\n(날짜) 이벤트/패키지 아이콘 발주', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  { grp: 'icon', type: 'UI', summary: '[M#] (날짜) 이벤트/패키지 아이콘 제작', desc: '[작업 내역]\r\n(날짜) 이벤트/패키지 아이콘 제작', assignee: '712020:3524fa82-3a5d-4529-bcf2-4c7145877718' },
+  { grp: 'icon', type: '기획', summary: '[M#] (날짜) 이벤트/패키지 아이콘 적용', desc: '[작업 내역]\r\n(날짜) 이벤트/패키지 아이콘 적용', assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b' },
+  // Translation group
+  { grp: 'trans', type: '기획', summary: '[M#] (날짜) 업데이트 번역 적용 1차', desc: '[작업 내역]\r\n(날짜) 업데이트 번역 적용 1차', assignee: '712020:2f915535-d288-4087-b7dd-918597b8168a' }
+];
+
+const ST_GRP_PARENT_MAP = { pkg: 'stParentPkg', evt: 'stParentEvt', icon: 'stParentIcon', trans: 'stParentTrans' };
+
+// Step navigation for subtask mode
+function stGoStep(n) {
+  stCurStep = n;
+  [$('st-sec1'), $('st-sec2'), $('st-sec3')].forEach((s, i) => s.classList.toggle('hidden', i + 1 !== n));
+  $('stStepBar').querySelectorAll('.step').forEach(el => {
+    const s = +el.dataset.step;
+    el.classList.toggle('active', s === n);
+    el.classList.toggle('done', s < n);
+  });
+  if (n === 2) stRenderTable();
+  if (n === 3) stGenerateCSV();
+  window.scrollTo(0, 0);
+}
+
+$('stStepBar').querySelectorAll('.step').forEach(el => {
+  el.addEventListener('click', () => {
+    const s = +el.dataset.step;
+    if (s < stCurStep) stGoStep(s);
+    else if (s === 2 && stItems.length > 0) stGoStep(2);
+    else if (s === 3 && stItems.length > 0) stGoStep(3);
+  });
+});
+
+// Fix Version change for subtask
+function stHandleFixVersionChange() {
+  const ver = $('stFixVersion').value || $('stFixVersionManual').value.trim();
+  if (!ver) return;
+  const { ms, date, year, month, day } = extractFromFixVersion(ver);
+  if (ms) $('stMilestone').value = ms;
+  if (date && year) {
+    $('stDate').value = buildDateForMode('st', year, month, day);
+  } else if (date) {
+    $('stDate').value = date;
+  }
+}
+
+$('stFixVersion').addEventListener('change', stHandleFixVersionChange);
+$('stFixVersionManual').addEventListener('input', stHandleFixVersionChange);
+
+// Week mode change → recalculate date
+document.querySelectorAll('input[name="stWeekMode"]').forEach(r => {
+  r.addEventListener('change', stHandleFixVersionChange);
+});
+
+$('stProject').addEventListener('change', async () => {
+  const key = $('stProject').value;
+  if (!key) return;
+  try {
+    const data = await jiraFetch(`/rest/api/3/project/${key}/versions`);
+    const ver = $('stFixVersion');
+    ver.disabled = false;
+    const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
+    ver.innerHTML = '<option value="">수정버전 선택</option>' +
+      unreleased.map(v => `<option value="${escAttr(v.name)}">${esc(v.name)}</option>`).join('');
+  } catch {}
+});
+
+// Generate sub-task items
+$('stBtnGenerate').addEventListener('click', () => {
+  const ver = $('stFixVersion').value || $('stFixVersionManual').value.trim();
+  if (!ver) { showToast('수정버전을 선택하세요', 'error'); return; }
+  const ms = $('stMilestone').value || 'M#';
+  const date = $('stDate').value.trim() || '(날짜)';
+
+  const parentIds = {};
+  for (const [grp, elId] of Object.entries(ST_GRP_PARENT_MAP)) {
+    parentIds[grp] = $(elId).value.trim();
+  }
+
+  stItems = [];
+  for (const t of ST_TEMPLATE) {
+    stItems.push({
+      grp: t.grp,
+      type: t.type,
+      parent: parentIds[t.grp] || '',
+      summary: t.summary.replace(/\[M#\]/g, `[${ms}]`).replace(/\(날짜 입력\)|\(날짜\)/g, date),
+      desc: t.desc.replace(/\(날짜 입력\)|\(날짜\)/g, date),
+      assignee: t.assignee,
+      checked: true
+    });
+  }
+
+  showToast(`${stItems.length}개 하위 티켓이 생성되었습니다`, 'success');
+  stGoStep(2);
+});
+
+// Group tabs
+$('stGrpTabs').addEventListener('click', e => {
+  const tab = e.target.closest('.grp-tab');
+  if (!tab) return;
+  stCurGrp = tab.dataset.grp;
+  $('stGrpTabs').querySelectorAll('.grp-tab').forEach(t => t.classList.toggle('active', t === tab));
+  stSyncFromTable();
+  stRenderTable();
+});
+
+function stUpdateCounts() {
+  $('stCountAll').textContent = stItems.length;
+  $('stCountPkg').textContent = stItems.filter(i => i.grp === 'pkg').length;
+  $('stCountEvt').textContent = stItems.filter(i => i.grp === 'evt').length;
+  $('stCountIcon').textContent = stItems.filter(i => i.grp === 'icon').length;
+  $('stCountTrans').textContent = stItems.filter(i => i.grp === 'trans').length;
+}
+
+function stRenderTable() {
+  stUpdateCounts();
+  const filtered = stCurGrp === 'all' ? stItems : stItems.filter(it => it.grp === stCurGrp);
+  const body = $('stEditBody');
+
+  const grpLabels = { pkg: '📦 패키지', evt: '🎪 이벤트', icon: '🎨 아이콘', trans: '🌐 번역' };
+
+  body.innerHTML = filtered.map((it, fi) => {
+    const realIdx = stCurGrp === 'all' ? fi : stItems.indexOf(it);
+    return `<tr data-idx="${realIdx}">
+      <td><input type="checkbox" class="row-chk" ${it.checked ? 'checked' : ''}></td>
+      <td class="row-num">${realIdx + 1}</td>
+      <td><input type="text" class="edit-type" value="${escAttr(it.type)}" style="width:50px;font-size:11px"></td>
+      <td><input type="text" class="edit-parent" value="${escAttr(it.parent)}" style="font-size:11px" placeholder="이슈 ID"></td>
+      <td><input type="text" class="edit-summary" value="${escAttr(it.summary)}"></td>
+      <td>
+        <span class="desc-toggle" onclick="toggleDesc(this)">▶ 설명</span>
+        <div class="desc-preview hidden">
+          <textarea class="edit-desc" rows="4" style="width:100%;background:#0f1117;border:1px solid #2a2d3e;border-radius:4px;color:#e0e0e0;padding:6px 8px;font-size:11px;font-family:inherit;resize:vertical;min-height:60px">${esc(it.desc)}</textarea>
+        </div>
+      </td>
+      <td><input type="text" class="edit-assignee" value="${escAttr(it.assignee)}" style="font-size:11px"></td>
+    </tr>`;
+  }).join('');
+}
+
+$('stEditBody').addEventListener('input', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('edit-summary')) stItems[idx].summary = e.target.value;
+  if (e.target.classList.contains('edit-desc')) stItems[idx].desc = e.target.value;
+  if (e.target.classList.contains('edit-assignee')) stItems[idx].assignee = e.target.value;
+  if (e.target.classList.contains('edit-type')) stItems[idx].type = e.target.value;
+  if (e.target.classList.contains('edit-parent')) stItems[idx].parent = e.target.value;
+});
+
+$('stEditBody').addEventListener('change', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  const idx = +tr.dataset.idx;
+  if (e.target.classList.contains('row-chk')) stItems[idx].checked = e.target.checked;
+});
+
+$('stChkAll').addEventListener('change', e => {
+  const filtered = stCurGrp === 'all' ? stItems : stItems.filter(i => i.grp === stCurGrp);
+  filtered.forEach(it => it.checked = e.target.checked);
+  $('stEditBody').querySelectorAll('.row-chk').forEach(cb => cb.checked = e.target.checked);
+});
+
+$('stBtnAddRow').addEventListener('click', () => {
+  const ms = $('stMilestone').value || 'M#';
+  const date = $('stDate').value.trim() || '(날짜)';
+  const grp = stCurGrp === 'all' ? 'pkg' : stCurGrp;
+  stItems.push({
+    grp, type: '기획', parent: $(ST_GRP_PARENT_MAP[grp])?.value?.trim() || '',
+    summary: `[${ms}] ${date} `, desc: '[작업 내역]\r\n',
+    assignee: '712020:d8186fed-d0f2-40a9-82a4-1f8a74266a5b', checked: true
+  });
+  stRenderTable();
+});
+
+$('stBtnDelChecked').addEventListener('click', () => {
+  stSyncFromTable();
+  stItems = stItems.filter(it => !it.checked);
+  stRenderTable();
+  $('stChkAll').checked = false;
+});
+
+function stSyncFromTable() {
+  $('stEditBody').querySelectorAll('tr').forEach(tr => {
+    const idx = +tr.dataset.idx;
+    if (idx >= stItems.length) return;
+    stItems[idx].summary = tr.querySelector('.edit-summary')?.value || '';
+    const descEl = tr.querySelector('.edit-desc');
+    if (descEl) stItems[idx].desc = descEl.value || '';
+    stItems[idx].checked = tr.querySelector('.row-chk')?.checked ?? true;
+    stItems[idx].assignee = tr.querySelector('.edit-assignee')?.value || '';
+    stItems[idx].type = tr.querySelector('.edit-type')?.value || '';
+    stItems[idx].parent = tr.querySelector('.edit-parent')?.value || '';
+  });
+}
+
+// CSV generation
+function stGenerateCSV() {
+  stSyncFromTable();
+  const selected = stItems.filter(it => it.checked && it.summary.trim());
+  const fixVersion = $('stFixVersion').value || $('stFixVersionManual').value.trim();
+
+  const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '수정버전'];
+  const csvRows = selected.map(it => [
+    it.type, it.parent, it.summary, it.desc, it.assignee, fixVersion
+  ]);
+
+  stCsvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
+
+  const grpCounts = { pkg: 0, evt: 0, icon: 0, trans: 0 };
+  selected.forEach(it => { if (grpCounts[it.grp] !== undefined) grpCounts[it.grp]++; });
+
+  $('stSummaryCards').innerHTML = `
+    <div class="scard"><div class="val">${selected.length}</div><div class="lbl">총 티켓 수</div></div>
+    <div class="scard green"><div class="val">${grpCounts.pkg}</div><div class="lbl">📦 패키지</div></div>
+    <div class="scard yellow"><div class="val">${grpCounts.evt}</div><div class="lbl">🎪 이벤트</div></div>
+    <div class="scard"><div class="val">${grpCounts.icon}</div><div class="lbl">🎨 아이콘</div></div>
+    <div class="scard"><div class="val">${grpCounts.trans}</div><div class="lbl">🌐 번역</div></div>
+  `;
+  $('stCsvPreview').textContent = stCsvOutput;
+}
+
+$('stToStep3').addEventListener('click', () => { stSyncFromTable(); stGoStep(3); });
+$('stBackTo1').addEventListener('click', () => stGoStep(1));
+$('stBackTo2').addEventListener('click', () => stGoStep(2));
+
+$('stBtnDownload').addEventListener('click', () => {
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + stCsvOutput], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ms = $('stMilestone').value || 'subtask';
+  a.download = `${ms}_하위티켓_일괄등록.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('stBtnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText(stCsvOutput).then(() => showToast('클립보드에 복사되었습니다', 'success'));
+});
+
+/* ═══════════════════════════════════════════
+   JIRA BULK ISSUE CREATION (shared)
+   ═══════════════════════════════════════════ */
+
+async function jiraFetchPost(path, body) {
+  const cfg = getJiraAuth();
+  if (!cfg) throw new Error('Jira 인증 정보가 없습니다');
+  const url = getProxyUrl(cfg.domain, path);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${cfg.auth}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${errText || res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * Build Jira issue field object.
+ * @param {object} opts - { projectKey, issueType, summary, description, assignee, priority, fixVersion, parent }
+ */
+function buildIssueFields(opts) {
+  const fields = {
+    project: { key: opts.projectKey },
+    issuetype: { name: opts.issueType },
+    summary: opts.summary,
+    description: {
+      type: 'doc',
+      version: 1,
+      content: [{
+        type: 'paragraph',
+        content: [{ type: 'text', text: opts.description || '' }]
+      }]
+    }
+  };
+  if (opts.assignee) fields.assignee = { accountId: opts.assignee };
+  if (opts.priority) fields.priority = { name: opts.priority };
+  if (opts.fixVersion) fields.fixVersions = [{ name: opts.fixVersion }];
+  if (opts.parent) fields.parent = { key: opts.parent };
+  return fields;
+}
+
+/**
+ * Submit issues to Jira in batches of up to 50.
+ * @param {Array} issuePayloads - array of { fields } objects
+ * @param {string} resultElId - DOM element ID for result display
+ * @param {HTMLElement} btn - the submit button (to disable/re-enable)
+ */
+async function submitToJira(issuePayloads, resultElId, btn) {
+  const isTestMode = $('jiraTestMode').checked;
+
+  if (!isTestMode && !jiraConnected) {
+    showToast('Jira에 먼저 연결하세요 (초기 세팅 탭 → Jira 연결 설정)', 'error');
+    return;
+  }
+  if (issuePayloads.length === 0) {
+    showToast('등록할 티켓이 없습니다', 'error');
+    return;
+  }
+
+  const resultEl = $(resultElId);
+  resultEl.classList.remove('hidden');
+  btn.disabled = true;
+  btn.textContent = '등록 중...';
+
+  const BATCH_SIZE = 50;
+  const batches = [];
+  for (let i = 0; i < issuePayloads.length; i += BATCH_SIZE) {
+    batches.push(issuePayloads.slice(i, i + BATCH_SIZE));
+  }
+
+  const domain = $('jiraDomain').value.trim() || 'test.atlassian.net';
+  let totalCreated = 0;
+  let totalErrors = 0;
+  const createdIssues = [];
+  const errors = [];
+
+  const testLabel = isTestMode ? ' (테스트 모드)' : '';
+  resultEl.innerHTML = `<div class="submit-result" ${isTestMode ? 'style="border-color:#fbbf24"' : ''}>
+    <h4>${isTestMode ? '🧪' : '🚀'} Jira 등록 진행 중...${testLabel}</h4>
+    <div class="submit-progress">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#aaa;margin-bottom:4px">
+        <span id="${resultElId}-progress-text">0 / ${issuePayloads.length}</span>
+        <span id="${resultElId}-progress-pct">0%</span>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" id="${resultElId}-bar" style="width:0%"></div></div>
+    </div>
+    <div class="result-list" id="${resultElId}-list"></div>
+  </div>`;
+
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batch = batches[bi];
+    try {
+      let result;
+      if (isTestMode) {
+        // Simulate API response with fake issue keys
+        await new Promise(r => setTimeout(r, 300));
+        const projectKey = batch[0]?.fields?.project?.key || 'TEST';
+        result = {
+          issues: batch.map((_, idx) => {
+            const seq = totalCreated + idx + 1;
+            return { key: `${projectKey}-TEST-${seq}`, id: `test-${seq}`, self: `https://${domain}/rest/api/3/issue/test-${seq}` };
+          })
+        };
+      } else {
+        result = await jiraFetchPost('/rest/api/3/issue/bulk', { issueUpdates: batch });
+      }
+
+      if (result.issues) {
+        for (const issue of result.issues) {
+          totalCreated++;
+          createdIssues.push(issue);
+        }
+      }
+      if (result.errors && result.errors.length > 0) {
+        for (const err of result.errors) {
+          totalErrors++;
+          errors.push(err);
+        }
+      }
+    } catch (e) {
+      totalErrors += batch.length;
+      errors.push({ message: e.message, count: batch.length });
+    }
+
+    // Update progress
+    const done = Math.min((bi + 1) * BATCH_SIZE, issuePayloads.length);
+    const pct = Math.round((done / issuePayloads.length) * 100);
+    const progText = $(`${resultElId}-progress-text`);
+    const progPct = $(`${resultElId}-progress-pct`);
+    const progBar = $(`${resultElId}-bar`);
+    if (progText) progText.textContent = `${done} / ${issuePayloads.length}`;
+    if (progPct) progPct.textContent = `${pct}%`;
+    if (progBar) progBar.style.width = `${pct}%`;
+  }
+
+  // Show final results
+  const listEl = $(`${resultElId}-list`);
+  let listHtml = '';
+
+  if (createdIssues.length > 0) {
+    listHtml += createdIssues.map(issue => {
+      const key = issue.key || issue.id;
+      const url = `https://${domain}/browse/${key}`;
+      return `<div class="result-item">
+        <span class="result-ok">✓</span>
+        <span class="key"><a href="${url}" target="_blank">${esc(key)}</a></span>
+        <span style="color:#aaa">${esc(issue.self ? '생성 완료' : '')}</span>
+      </div>`;
+    }).join('');
+  }
+
+  if (errors.length > 0) {
+    listHtml += errors.map(err => {
+      const msg = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+      return `<div class="result-item">
+        <span class="result-fail">✕</span>
+        <span style="color:#f87171">${esc(msg)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  if (listEl) listEl.innerHTML = listHtml;
+
+  // Update header
+  const header = resultEl.querySelector('h4');
+  if (totalErrors === 0) {
+    header.innerHTML = `<span class="result-ok">✓</span> ${totalCreated}개 티켓 등록 완료!${testLabel}`;
+  } else {
+    header.innerHTML = `<span class="result-fail">⚠</span> 성공: ${totalCreated}건 / 실패: ${totalErrors}건${testLabel}`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'JIRA 티켓 자동 일괄 생성';
+
+  if (totalCreated > 0) {
+    const tmsg = isTestMode ? ' (테스트 — 실제 생성되지 않음)' : '';
+    showToast(`${totalCreated}개 티켓이 Jira에 등록되었습니다${tmsg}`, 'success');
+  }
+
+  return createdIssues;
+}
+
+// ── Mode 1: Milestone tickets → Jira ──
+$('btnJiraSubmit').addEventListener('click', async () => {
+  syncFromTable();
+  const checked = items.filter(it => it.checked && it.summary.trim());
+  const selected = [
+    ...checked.filter(it => it.category === 'open'),
+    ...checked.filter(it => it.category === 'data'),
+    ...checked.filter(it => it.category === 'later'),
+  ];
+
+  const projectKey = $fProject.value;
+  if (!projectKey) { showToast('프로젝트를 선택하세요', 'error'); return; }
+
+  const issueType = $fIssueType.value;
+  const priority = $fPriority.value;
+  const assignee = $fAssignee.value.trim();
+  const fixVersion = $fFixVersion.value || $fFixVersionManual.value.trim();
+  const parent = $fParent.value.trim();
+
+  const payloads = selected.map(it => ({
+    fields: buildIssueFields({
+      projectKey, issueType, summary: it.summary, description: it.desc,
+      assignee, priority, fixVersion, parent: parent || undefined
+    })
+  }));
+
+  await submitToJira(payloads, 'jiraSubmitResult', $('btnJiraSubmit'));
+});
+
+// ── Mode 2: Event/Package → Jira ──
+// Mapping: summary keyword → Case 3 parent field
+const EV_TO_ST_PARENT_MAP = [
+  { keyword: '패키지 업데이트', field: 'stParentPkg' },
+  { keyword: '이벤트 업데이트', field: 'stParentEvt' },
+  { keyword: '아이콘 리소스',   field: 'stParentIcon' },
+  { keyword: '번역 적용',       field: 'stParentTrans' }
+];
+
+$('evBtnJiraSubmit').addEventListener('click', async () => {
+  evSyncFromTable();
+  const selected = evItems.filter(it => it.checked && it.summary.trim());
+
+  const projectKey = $('evProject').value;
+  if (!projectKey) { showToast('프로젝트를 선택하세요', 'error'); return; }
+
+  const priority = $('evPriority').value;
+  const fixVersion = $('evFixVersion').value || $('evFixVersionManual').value.trim();
+
+  const payloads = selected.map(it => ({
+    fields: buildIssueFields({
+      projectKey, issueType: '스토리', summary: it.summary, description: it.desc,
+      assignee: it.assignee, priority, fixVersion
+    })
+  }));
+
+  const created = await submitToJira(payloads, 'evJiraSubmitResult', $('evBtnJiraSubmit'));
+
+  // Auto-fill Case 3 parent issue IDs from created tickets
+  if (created && created.length > 0) {
+    for (let i = 0; i < selected.length && i < created.length; i++) {
+      const key = created[i].key || created[i].id;
+      if (!key) continue;
+      const summary = selected[i].summary;
+      for (const map of EV_TO_ST_PARENT_MAP) {
+        if (summary.includes(map.keyword)) {
+          $(map.field).value = key;
+          break;
+        }
+      }
+    }
+  }
+});
+
+// ── Mode 3: Sub-tasks → Jira ──
+$('stBtnJiraSubmit').addEventListener('click', async () => {
+  stSyncFromTable();
+  const selected = stItems.filter(it => it.checked && it.summary.trim());
+
+  const projectKey = $('stProject').value;
+  if (!projectKey) { showToast('프로젝트를 선택하세요', 'error'); return; }
+
+  const fixVersion = $('stFixVersion').value || $('stFixVersionManual').value.trim();
+
+  const payloads = selected.map(it => ({
+    fields: buildIssueFields({
+      projectKey, issueType: it.type, summary: it.summary, description: it.desc,
+      assignee: it.assignee, fixVersion, parent: it.parent || undefined
+    })
+  }));
+
+  await submitToJira(payloads, 'stJiraSubmitResult', $('stBtnJiraSubmit'));
+});
+
+/* ═══════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════ */
+loadJiraSettings();
+
+})();
+</script>
+</body>
+</html>
