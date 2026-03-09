@@ -230,16 +230,21 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
       <div class="field-grid">
         <div class="field">
           <label>Jira 도메인</label>
-          <input type="text" id="jiraDomain" placeholder="yoursite.atlassian.net">
+          <input type="text" id="jiraDomain" value="madngine.atlassian.net">
           <span class="hint">https:// 제외하고 입력</span>
         </div>
         <div class="field">
           <label>이메일</label>
-          <input type="email" id="jiraEmail" placeholder="you@company.com">
+          <div style="display:flex;align-items:center;gap:0">
+            <input type="text" id="jiraEmailId" placeholder="id 입력" style="border-radius:6px 0 0 6px;border-right:none">
+            <span style="background:#2a2d3e;border:1px solid #2a2d3e;padding:8px 10px;font-size:13px;color:#aaa;border-radius:0 6px 6px 0;white-space:nowrap">@madngine.com</span>
+          </div>
+          <input type="hidden" id="jiraEmail">
         </div>
         <div class="field">
           <label>API 토큰</label>
-          <input type="password" id="jiraToken" placeholder="Atlassian API 토큰">
+          <input type="password" id="jiraToken" placeholder="Atlassian API 토큰 입력">
+          <span class="hint">한 번 입력 후 "설정 저장"을 누르면 브라우저에 저장됩니다.</span>
           <span class="hint"><a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">토큰 발급 →</a></span>
         </div>
         <div class="field" style="grid-column:1/-1">
@@ -840,22 +845,33 @@ function togglePanel(head) {
 /* ═══════════════════════════════════════════
    JIRA API INTEGRATION
    ═══════════════════════════════════════════ */
+// Sync email: id input → hidden full email field
+function syncEmail() {
+  const id = $('jiraEmailId').value.trim();
+  $('jiraEmail').value = id ? `${id}@madngine.com` : '';
+}
+
 function loadJiraSettings() {
   const saved = localStorage.getItem('jira_settings');
   if (saved) {
     try {
       const s = JSON.parse(saved);
-      $('jiraDomain').value = s.domain || '';
-      $('jiraEmail').value = s.email || '';
-      $('jiraToken').value = s.token || '';
+      if (s.domain) $('jiraDomain').value = s.domain;
+      if (s.email) {
+        const id = s.email.replace(/@madngine\.com$/i, '');
+        $('jiraEmailId').value = id;
+      }
+      if (s.token) $('jiraToken').value = s.token;
       if (s.corsMode) $('corsMode').value = s.corsMode;
       if (s.corsCustomUrl) $('corsCustomUrl').value = s.corsCustomUrl;
       $('corsCustomUrl').classList.toggle('hidden', $('corsMode').value !== 'custom');
     } catch {}
   }
+  syncEmail();
 }
 
 function saveJiraSettings() {
+  syncEmail();
   localStorage.setItem('jira_settings', JSON.stringify({
     domain: $('jiraDomain').value.trim(),
     email: $('jiraEmail').value.trim(),
@@ -868,7 +884,8 @@ function saveJiraSettings() {
 
 function clearJiraSettings() {
   localStorage.removeItem('jira_settings');
-  $('jiraDomain').value = '';
+  $('jiraDomain').value = 'madngine.atlassian.net';
+  $('jiraEmailId').value = '';
   $('jiraEmail').value = '';
   $('jiraToken').value = '';
   jiraConnected = false;
@@ -1031,9 +1048,10 @@ $('corsMode').addEventListener('change', () => {
   $('corsCustomUrl').classList.toggle('hidden', $('corsMode').value !== 'custom');
 });
 
-$('btnJiraTest').addEventListener('click', testJiraConnection);
+$('btnJiraTest').addEventListener('click', () => { syncEmail(); testJiraConnection(); });
 $('btnJiraSave').addEventListener('click', saveJiraSettings);
 $('btnJiraClear').addEventListener('click', clearJiraSettings);
+$('jiraEmailId').addEventListener('input', syncEmail);
 
 /* ═══════════════════════════════════════════
    FILE UPLOAD
