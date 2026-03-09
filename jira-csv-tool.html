@@ -1345,37 +1345,52 @@ function stripMilestonePrefix(name) {
 }
 
 function buildDescription(specName, grp, category, ms, nextMs) {
-  let lines = ['[작업 내역]', specName];
-
-  // Collect sub-row details
   const subRows = grp.rows;
-  const hasMultipleRows = subRows.length > 1 || (subRows.length === 1 && subRows[0].detail && subRows[0].subSpec);
 
-  if (hasMultipleRows) {
-    // Group sub-rows by L category
-    const categories = new Map();
-    for (const r of subRows) {
-      const cat = r.subSpec || '';
-      if (!r.detail && !r.subSpec) continue;
-      if (!categories.has(cat)) categories.set(cat, []);
-      if (r.detail) categories.set(cat, [...categories.get(cat), r.detail]);
+  // Check if any row has M column (detail) content
+  const hasAnyDetail = subRows.some(r => r.detail);
+
+  // No detail at all → simple format
+  if (!hasAnyDetail) {
+    const lines = ['[작업 내역]', specName];
+    appendTestNotes(lines, category, ms);
+    return lines.join('\n');
+  }
+
+  // Has detail → build full description from L (subSpec) + M (detail) columns
+  const lines = [];
+
+  for (let i = 0; i < subRows.length; i++) {
+    const r = subRows[i];
+    const sub = r.subSpec;
+    const detail = r.detail;
+
+    if (!sub && !detail) continue;
+
+    // Add blank line separator between sections
+    if (lines.length > 0) lines.push('');
+
+    // L column (subSpec) as section header — skip if same as spec name
+    if (sub && sub !== grp.specName) {
+      lines.push(sub);
     }
 
-    if (categories.size > 0) {
-      lines.push('');
-      for (const [cat, details] of categories) {
-        if (cat) lines.push(`${cat})`);
-        for (const d of details) {
-          lines.push(d);
-        }
-        lines.push('');
-      }
-      // Remove trailing empty line
-      while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    // M column (detail) as content
+    if (detail) {
+      lines.push(detail);
     }
   }
 
-  // Add test notes based on category
+  // If only the first row had content matching spec name, add header
+  if (lines.length === 0) {
+    lines.push('[작업 내역]', specName);
+  }
+
+  appendTestNotes(lines, category, ms);
+  return lines.join('\n');
+}
+
+function appendTestNotes(lines, category, ms) {
   if (category === 'data') {
     lines.push('');
     lines.push('[테스트 참고사항]');
@@ -1387,8 +1402,6 @@ function buildDescription(specName, grp, category, ms, nextMs) {
     lines.push('해당 컨텐츠는 국내 작업 머지 시 함께 머지되었으나 글로벌에서는 추후 오픈 예정입니다.');
     lines.push(`${ms} 빌드에서는 해당 컨텐츠가 노출되면 안됩니다.  미노출되는지 여부 확인 부탁 드리겠습니다.`);
   }
-
-  return lines.join('\n');
 }
 
 /* ═══════════════════════════════════════════
