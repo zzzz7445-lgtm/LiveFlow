@@ -1404,6 +1404,13 @@ function appendTestNotes(lines, category, ms) {
   }
 }
 
+// Ensure description is never empty: fallback to [작업 내역] + title without [M#] header
+function ensureDesc(desc, summary) {
+  if (desc && desc.trim()) return desc;
+  const title = summary.replace(/^\[M\d+\]\s*/, '');
+  return `[작업 내역]\n${title}`;
+}
+
 /* ═══════════════════════════════════════════
    DUPLICATE SPEC ALERT
    ═══════════════════════════════════════════ */
@@ -1583,7 +1590,7 @@ function generateCSV() {
 
   const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '우선 순위', '수정버전'];
   const csvRows = selected.map(it => [
-    issueType, parent, it.summary, it.desc, assignee, priority, fixVersion
+    issueType, parent, it.summary, ensureDesc(it.desc, it.summary), assignee, priority, fixVersion
   ]);
 
   csvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
@@ -2066,7 +2073,7 @@ function evGenerateCSV() {
 
   const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '우선 순위', '수정버전'];
   const csvRows = selected.map(it => [
-    '스토리', '', it.summary, it.desc, it.assignee, priority, fixVersion
+    '스토리', '', it.summary, ensureDesc(it.desc, it.summary), it.assignee, priority, fixVersion
   ]);
 
   evCsvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
@@ -2330,7 +2337,7 @@ function stGenerateCSV() {
 
   const csvHeader = ['이슈 유형', '상위항목', '요약', '설명', '담당자', '수정버전'];
   const csvRows = selected.map(it => [
-    it.type, it.parent, it.summary, it.desc, it.assignee, fixVersion
+    it.type, it.parent, it.summary, ensureDesc(it.desc, it.summary), it.assignee, fixVersion
   ]);
 
   stCsvOutput = [csvHeader, ...csvRows].map(row => row.map(csvCell).join(',')).join('\n');
@@ -2579,7 +2586,7 @@ $('btnJiraSubmit').addEventListener('click', async () => {
 
   const payloads = selected.map(it => ({
     fields: buildIssueFields({
-      projectKey, issueType, summary: it.summary, description: it.desc,
+      projectKey, issueType, summary: it.summary, description: ensureDesc(it.desc, it.summary),
       assignee, priority, fixVersion, parent: parent || undefined
     })
   }));
@@ -2608,7 +2615,7 @@ $('evBtnJiraSubmit').addEventListener('click', async () => {
 
   const payloads = selected.map(it => ({
     fields: buildIssueFields({
-      projectKey, issueType: '스토리', summary: it.summary, description: it.desc,
+      projectKey, issueType: '스토리', summary: it.summary, description: ensureDesc(it.desc, it.summary),
       assignee: it.assignee, priority, fixVersion
     })
   }));
@@ -2643,7 +2650,7 @@ $('stBtnJiraSubmit').addEventListener('click', async () => {
 
   const payloads = selected.map(it => ({
     fields: buildIssueFields({
-      projectKey, issueType: it.type, summary: it.summary, description: it.desc,
+      projectKey, issueType: it.type, summary: it.summary, description: ensureDesc(it.desc, it.summary),
       assignee: it.assignee, fixVersion, parent: it.parent || undefined
     })
   }));
