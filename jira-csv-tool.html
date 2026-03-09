@@ -2679,7 +2679,12 @@ echo Node.js 확인 완료!
 echo.
 echo 프록시 시작 중... (이 창을 닫지 마세요)
 echo.
-npx local-cors-proxy --proxyUrl https://${domain} --port 8080
+cmd /c "npx --yes local-cors-proxy --proxyUrl https://${domain} --port 8080"
+if errorlevel 1 (
+    echo.
+    echo [오류] 프록시 실행 실패. 아래 명령어를 CMD에서 직접 실행해보세요:
+    echo   npx local-cors-proxy --proxyUrl https://${domain} --port 8080
+)
 pause
 `;
   const blob = new Blob([bat], { type: 'application/bat' });
