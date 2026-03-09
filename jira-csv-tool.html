@@ -2666,35 +2666,34 @@ loadJiraSettings();
 // ── Proxy .bat download ──
 $('btnDownloadProxy').addEventListener('click', () => {
   const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
-  const bat = `@echo off
-chcp 65001 >nul
-echo ============================================
-echo   CORS Proxy for Jira - LiveFlow
-echo   Domain: ${domain}
-echo   Port:   8080
-echo ============================================
-echo.
-echo Node.js 확인 중...
-node -v >nul 2>&1
-if errorlevel 1 (
-    echo [오류] Node.js가 설치되어 있지 않습니다.
-    echo https://nodejs.org 에서 LTS 버전을 설치하세요.
-    pause
-    exit /b
-)
-echo Node.js 확인 완료!
-echo.
-echo 프록시 시작 중... (이 창을 닫지 마세요)
-echo.
-cmd /c "npx --yes local-cors-proxy --proxyUrl https://${domain} --port 8080"
-if errorlevel 1 (
-    echo.
-    echo [오류] 프록시 실행 실패. 아래 명령어를 CMD에서 직접 실행해보세요:
-    echo   npx local-cors-proxy --proxyUrl https://${domain} --port 8080
-)
-pause
-`;
-  const blob = new Blob([bat], { type: 'application/bat' });
+  // Use ASCII-safe bat content to avoid encoding issues
+  const lines = [
+    '@echo off',
+    'chcp 65001 >nul 2>&1',
+    'echo ============================================',
+    'echo   CORS Proxy for Jira - LiveFlow',
+    `echo   Domain: ${domain}`,
+    'echo   Port:   8080',
+    'echo ============================================',
+    'echo.',
+    'where node >nul 2>&1',
+    'if errorlevel 1 (',
+    '    echo [ERROR] Node.js is not installed.',
+    '    echo Download from https://nodejs.org',
+    '    pause',
+    '    exit /b',
+    ')',
+    'echo Node.js OK!',
+    'echo.',
+    'echo Starting proxy... Do not close this window.',
+    'echo.',
+    `npx --yes local-cors-proxy --proxyUrl https://${domain} --port 8080`,
+    'echo.',
+    'echo Proxy stopped.',
+    'pause'
+  ];
+  const bat = lines.join('\r\n');
+  const blob = new Blob([bat], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
