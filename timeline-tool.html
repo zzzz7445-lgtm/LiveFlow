@@ -1374,6 +1374,10 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
     if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+  // Timezone-safe date key (avoids toISOString UTC offset issue)
+  function localDateKey(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
 
   /* ══════════════════════════════════════════════════
      MODE TAB SWITCHING
@@ -1682,7 +1686,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
     let d = new Date(startDate);
     while (d <= updateDate) {
       const dow = d.getDay();
-      const dateKey = d.toISOString().slice(0,10);
+      const dateKey = localDateKey(d);
       if (dow === 6) {
         const sun = new Date(d); sun.setDate(sun.getDate() + 1);
         columns.push({ type:'weekend', dates:[new Date(d),sun], label:`${d.getDate()}~\n${sun.getDate()}`, isWeekend:true, isHoliday:false, holidayName:'' });
@@ -1697,8 +1701,8 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
     // Map schedule entry to column index
     function findColIdx(entry) {
       const targetDate = dayOfWeekToDate(updateDate, entry.day, entry.week, mode);
-      const key = targetDate.toISOString().slice(0,10);
-      return columns.findIndex(c => c.dates.some(cd => cd.toISOString().slice(0,10) === key));
+      const key = localDateKey(targetDate);
+      return columns.findIndex(c => c.dates.some(cd => localDateKey(cd) === key));
     }
     const updateColIdx = columns.length - 1;
 
@@ -1741,12 +1745,22 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
         if (r3DelivIdx >= 0 && finalDelivIdx >= 0) {
           const spanCols = [];
           for (let ci = r3DelivIdx + 1; ci < finalDelivIdx; ci++) {
-            if (!columns[ci].isWeekend && ci !== updateColIdx) spanCols.push(ci);
+            if (!columns[ci].isWeekend && ci !== updateColIdx && !columns[ci].isHoliday) spanCols.push(ci);
           }
+          // Split into contiguous segments (holidays/weekends create gaps)
+          const segments = [];
           if (spanCols.length > 0) {
-            spanEvents.push({ rowNum:2, colStart:spanCols[0], colEnd:spanCols[spanCols.length-1], text:'(상황에 따라 추가 납품)', cls:'dt-delivery' });
-            spanEvents.push({ rowNum:7, colStart:spanCols[0], colEnd:spanCols[spanCols.length-1], text:'추가 납품 빌드에 대한 테스트', cls:'dt-test' });
+            let seg = [spanCols[0]];
+            for (let i = 1; i < spanCols.length; i++) {
+              if (spanCols[i] === spanCols[i-1] + 1) { seg.push(spanCols[i]); }
+              else { segments.push(seg); seg = [spanCols[i]]; }
+            }
+            segments.push(seg);
           }
+          segments.forEach(seg => {
+            spanEvents.push({ rowNum:2, colStart:seg[0], colEnd:seg[seg.length-1], text:'(상황에 따라 추가 납품)', cls:'dt-delivery' });
+            spanEvents.push({ rowNum:7, colStart:seg[0], colEnd:seg[seg.length-1], text:'추가 납품 빌드에 대한 테스트', cls:'dt-test' });
+          });
         }
       }
     }
@@ -1817,6 +1831,13 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
       }
     });
 
+    // Holiday merged cells (span all 6 data rows: row 2~7)
+    columns.forEach((col, ci) => {
+      if (col.isHoliday && !col.isWeekend && ci !== updateColIdx) {
+        html += `<div class="tl-cell" style="grid-column:${ci+3};grid-row:2/8;align-items:center;justify-content:center;background:#FFF3E0;"><span style="font-size:.72rem;color:#e57373;font-weight:600;text-align:center;line-height:1.3;">${esc(col.holidayName)}</span></div>`;
+      }
+    });
+
     // Update day merged cell (span all 6 data rows: row 2~7)
     if (updateColIdx >= 0) {
       const ci = updateColIdx;
@@ -1842,9 +1863,10 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
         // Time label
         html += `<div class="tl-cell dt-time-label" style="grid-column:2;grid-row:${rowNum};">${esc(subRow.label)}</div>`;
 
-        // Data cells (skip weekends & update col - already merged above)
+        // Data cells (skip weekends, holidays & update col - already merged above)
         columns.forEach((col, ci) => {
           if (col.isWeekend) return;
+          if (col.isHoliday) return;
           if (ci === updateColIdx) return;
 
           // Check for span events covering this cell
@@ -1860,8 +1882,6 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
           let cls = 'tl-cell';
           let style = `grid-column:${ci+3};grid-row:${rowNum};min-height:50px;align-items:center;`;
 
-          if (col.isHoliday) style += 'background:#FFF3E0;';
-
           // Deadline border
           if (deadlineCols.has(ci)) {
             const dlS = '2px dashed #e57373';
@@ -1870,12 +1890,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
           }
 
           const ev = subRow.events.find(e => e.col === ci);
-
           let content = '';
-          if (col.isHoliday && !ev) {
-            content = `<span style="font-size:.65rem;color:#e57373;">공휴일</span>`;
-          }
-
           if (ev) {
             content = `<div class="dt-event ${ev.cls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
           }
