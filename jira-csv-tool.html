@@ -2771,11 +2771,10 @@ loadJiraSettings();
 // ── Proxy command copy ──
 $('btnCopyProxyCmd').addEventListener('click', () => {
   const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
-  const cmd = `node -e "const h=require('http'),s=require('https');h.createServer((q,r)=>{r.setHeader('Access-Control-Allow-Origin','*');r.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');r.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,Accept');if(q.method==='OPTIONS'){r.writeHead(204);r.end();return}let p=q.url.replace(/^\\\\/proxy/,''),b=[];q.on('data',c=>b.push(c));q.on('end',()=>{let d=Buffer.concat(b),hd={};for(let[k,v]of Object.entries(q.headers)){if(['host','origin','referer','connection'].includes(k))continue;hd[k]=v}hd.host='${domain}';if(d.length)hd['content-length']=d.length;let x=s.request({hostname:'${domain}',port:443,path:p,method:q.method,headers:hd},z=>{r.writeHead(z.statusCode,{...z.headers,'access-control-allow-origin':'*'});z.pipe(r)});x.on('error',e=>{r.writeHead(502);r.end(e.message)});if(d.length)x.write(d);x.end()})}).listen(8080,()=>console.log('Proxy running on http://localhost:8080 -> ${domain}'))"`;
+  const cmd = `node -e "require('http').createServer((q,r)=>{r.setHeader('Access-Control-Allow-Origin','*');r.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');r.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,Accept');if(q.method==='OPTIONS'){r.writeHead(204);r.end();return}var p=q.url.replace('/proxy',''),b=[];q.on('data',function(c){b.push(c)});q.on('end',function(){var d=Buffer.concat(b),hd={host:'${domain}',accept:'application/json'};if(q.headers.authorization)hd.authorization=q.headers.authorization;if(q.headers['content-type'])hd['content-type']=q.headers['content-type'];if(d.length>0)hd['content-length']=d.length;var x=require('https').request({hostname:'${domain}',port:443,path:p,method:q.method,headers:hd},function(z){var rh={'access-control-allow-origin':'*','content-type':z.headers['content-type']||'application/json'};r.writeHead(z.statusCode,rh);z.pipe(r)});x.on('error',function(e){console.log('ERR:'+e.message);r.writeHead(502);r.end(e.message)});if(d.length>0)x.write(d);x.end()})}).listen(8080,function(){console.log('Proxy OK -> ${domain} on :8080')})"`;
   navigator.clipboard.writeText(cmd).then(() => {
     showToast('프록시 명령어가 클립보드에 복사되었습니다! CMD 또는 PowerShell에 붙여넣기하세요.', 'success');
   }).catch(() => {
-    // Fallback: show in prompt
     prompt('아래 명령어를 복사하세요:', cmd);
   });
 });
@@ -2802,26 +2801,37 @@ http.createServer((req, res) => {
     return;
   }
 
-  const path = req.url.replace(/^\\/proxy/, '');
+  const path = req.url.replace('/proxy', '');
+  console.log(req.method + ' ' + path);
+
   const chunks = [];
   req.on('data', c => chunks.push(c));
   req.on('end', () => {
     const body = Buffer.concat(chunks);
-    const headers = {};
-    for (const [k, v] of Object.entries(req.headers)) {
-      if (['host', 'origin', 'referer', 'connection'].includes(k.toLowerCase())) continue;
-      headers[k] = v;
-    }
-    headers['host'] = TARGET;
+
+    // Only forward essential headers
+    const headers = {
+      'host': TARGET,
+      'accept': 'application/json'
+    };
+    if (req.headers.authorization) headers['authorization'] = req.headers.authorization;
+    if (req.headers['content-type']) headers['content-type'] = req.headers['content-type'];
     if (body.length > 0) headers['content-length'] = body.length;
 
     const opts = { hostname: TARGET, port: 443, path, method: req.method, headers };
     const proxyReq = https.request(opts, proxyRes => {
-      const rh = { ...proxyRes.headers, 'access-control-allow-origin': '*' };
+      const rh = {
+        'access-control-allow-origin': '*',
+        'content-type': proxyRes.headers['content-type'] || 'application/json'
+      };
       res.writeHead(proxyRes.statusCode, rh);
       proxyRes.pipe(res);
     });
-    proxyReq.on('error', err => { res.writeHead(502); res.end('Proxy error: ' + err.message); });
+    proxyReq.on('error', err => {
+      console.error('Proxy error:', err.message);
+      res.writeHead(502);
+      res.end('Proxy error: ' + err.message);
+    });
     if (body.length > 0) proxyReq.write(body);
     proxyReq.end();
   });
@@ -2830,7 +2840,6 @@ http.createServer((req, res) => {
   console.log('  CORS Proxy for Jira - LiveFlow');
   console.log('  Target: ' + TARGET);
   console.log('  Port:   ' + PORT);
-  console.log('  URL:    http://localhost:' + PORT + '/proxy/...');
   console.log('============================================');
   console.log('Proxy is running. Do not close this window.');
 });
