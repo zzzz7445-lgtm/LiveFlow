@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jira 티켓 CSV 생성기 — LiveFlow</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0f1117;color:#e0e0e0;font-family:'Segoe UI','Malgun Gothic',sans-serif;min-height:100vh}
@@ -277,9 +278,9 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
       <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px">node -v</code>
       <p style="margin-bottom:12px;font-size:12px">설치 안 되어 있다면 → <a href="https://nodejs.org" target="_blank">https://nodejs.org</a> 에서 LTS 버전 다운로드</p>
       <p><strong style="color:#e0e0e0">2단계: 프록시 실행 파일 다운로드 & 실행</strong></p>
-      <p style="margin-bottom:8px">아래 버튼을 클릭하면 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">.bat</code> 파일이 다운로드됩니다. 더블클릭으로 실행하세요.</p>
+      <p style="margin-bottom:8px">아래 버튼을 클릭하면 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">.zip</code> 파일이 다운로드됩니다. 압축 해제 후 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">.bat</code> 파일을 더블클릭으로 실행하세요.</p>
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button class="btn btn-primary btn-sm" id="btnDownloadProxy">⬇ 프록시 실행 파일 다운로드 (.bat)</button>
+        <button class="btn btn-primary btn-sm" id="btnDownloadProxy">⬇ 프록시 실행 파일 다운로드 (.zip)</button>
       </div>
       <p style="font-size:12px;margin-bottom:12px">또는 터미널에서 직접 실행:</p>
       <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px;word-break:break-all">npx local-cors-proxy --proxyUrl https://madngine.atlassian.net --port 8080</code>
@@ -2663,9 +2664,8 @@ $('stBtnJiraSubmit').addEventListener('click', async () => {
 loadJiraSettings();
 
 // ── Proxy .bat download ──
-$('btnDownloadProxy').addEventListener('click', () => {
+$('btnDownloadProxy').addEventListener('click', async () => {
   const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
-  // Use ASCII-safe bat content to avoid encoding issues
   const lines = [
     '@echo off',
     'chcp 65001 >nul 2>&1',
@@ -2692,14 +2692,16 @@ $('btnDownloadProxy').addEventListener('click', () => {
     'pause'
   ];
   const bat = lines.join('\r\n');
-  const blob = new Blob([bat], { type: 'application/octet-stream' });
+  const zip = new JSZip();
+  zip.file('start-jira-proxy.bat', bat);
+  const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'start-jira-proxy.bat';
+  a.download = 'start-jira-proxy.zip';
   a.click();
   URL.revokeObjectURL(url);
-  showToast('start-jira-proxy.bat 다운로드 완료! 더블클릭으로 실행하세요.', 'success');
+  showToast('start-jira-proxy.zip 다운로드 완료! 압축 해제 후 .bat 파일을 실행하세요.', 'success');
 });
 
 })();
