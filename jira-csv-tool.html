@@ -877,7 +877,7 @@ function loadJiraSettings() {
 function saveJiraSettings() {
   syncEmail();
   localStorage.setItem('jira_settings', JSON.stringify({
-    domain: $('jiraDomain').value.trim(),
+    domain: cleanDomain($('jiraDomain').value.trim()),
     email: $('jiraEmail').value.trim(),
     token: $('jiraToken').value.trim(),
     corsMode: $('corsMode').value,
@@ -901,8 +901,13 @@ function clearJiraSettings() {
   showToast('설정이 초기화되었습니다', 'success');
 }
 
+/** Strip https://, http://, trailing slashes from domain */
+function cleanDomain(d) {
+  return d.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
 function getJiraAuth() {
-  const domain = $('jiraDomain').value.trim();
+  const domain = cleanDomain($('jiraDomain').value.trim());
   const email = $('jiraEmail').value.trim();
   const token = $('jiraToken').value.trim();
   if (!domain || !email || !token) return null;
@@ -2497,7 +2502,7 @@ async function submitToJira(issuePayloads, resultElId, btn) {
     batches.push(issuePayloads.slice(i, i + BATCH_SIZE));
   }
 
-  const domain = $('jiraDomain').value.trim() || 'test.atlassian.net';
+  const domain = cleanDomain($('jiraDomain').value.trim()) || 'test.atlassian.net';
   let totalCreated = 0;
   let totalErrors = 0;
   const createdIssues = [];
@@ -2768,9 +2773,14 @@ $('stBtnJiraSubmit').addEventListener('click', async () => {
    ═══════════════════════════════════════════ */
 loadJiraSettings();
 
+// Auto-strip https:// from domain input
+$('jiraDomain').addEventListener('blur', () => {
+  $('jiraDomain').value = cleanDomain($('jiraDomain').value.trim());
+});
+
 // ── Proxy command copy ──
 $('btnCopyProxyCmd').addEventListener('click', () => {
-  const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
+  const domain = cleanDomain($('jiraDomain').value.trim()) || 'madngine.atlassian.net';
   const cmd = `node -e "require('http').createServer((q,r)=>{r.setHeader('Access-Control-Allow-Origin','*');r.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');r.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,Accept');if(q.method==='OPTIONS'){r.writeHead(204);r.end();return}var p=q.url.replace('/proxy',''),b=[];q.on('data',function(c){b.push(c)});q.on('end',function(){var d=Buffer.concat(b),hd={host:'${domain}',accept:'application/json'};if(q.headers.authorization)hd.authorization=q.headers.authorization;if(q.headers['content-type'])hd['content-type']=q.headers['content-type'];if(d.length>0)hd['content-length']=d.length;var x=require('https').request({hostname:'${domain}',port:443,path:p,method:q.method,headers:hd},function(z){var rh={'access-control-allow-origin':'*','content-type':z.headers['content-type']||'application/json'};r.writeHead(z.statusCode,rh);z.pipe(r)});x.on('error',function(e){console.log('ERR:'+e.message);r.writeHead(502);r.end(e.message)});if(d.length>0)x.write(d);x.end()})}).listen(8080,function(){console.log('Proxy OK -> ${domain} on :8080')})"`;
   navigator.clipboard.writeText(cmd).then(() => {
     showToast('프록시 명령어가 클립보드에 복사되었습니다! CMD 또는 PowerShell에 붙여넣기하세요.', 'success');
@@ -2781,7 +2791,7 @@ $('btnCopyProxyCmd').addEventListener('click', () => {
 
 // ── Proxy .bat download ──
 $('btnDownloadProxy').addEventListener('click', async () => {
-  const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
+  const domain = cleanDomain($('jiraDomain').value.trim()) || 'madngine.atlassian.net';
 
   // Self-contained Node.js CORS proxy (no npm install needed)
   const proxyJs = `const http = require('http');
