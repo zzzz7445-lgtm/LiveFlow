@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>타임라인 인포그래픽 생성기</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Noto Sans KR','Segoe UI',sans-serif; background:#0f1117; color:#e0e0e0; min-height:100vh; }
+
+/* ── UI Shell (Dark Theme) ── */
+.container { max-width:1400px; margin:0 auto; padding:16px 24px 40px; }
+h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:4px; }
+.subtitle { color:#888; font-size:.85rem; margin-bottom:20px; }
+
+/* Step bar */
+.step-bar { display:flex; gap:8px; margin-bottom:24px; }
+.step-item { flex:1; text-align:center; padding:10px 0; border-radius:8px; background:#1a1d2e; color:#666; font-size:.85rem; font-weight:600; transition:.3s; position:relative; }
+.step-item.active { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+.step-item.done { background:#1e3a2f; color:#4ade80; }
+
+/* Sections */
+.section { display:none; }
+.section.show { display:block; }
+
+/* Upload area */
+.upload-area { border:2px dashed #333; border-radius:12px; padding:48px; text-align:center; cursor:pointer; transition:.3s; margin-bottom:20px; }
+.upload-area:hover, .upload-area.drag { border-color:#667eea; background:rgba(102,126,234,.05); }
+.upload-area h3 { font-size:1.1rem; color:#ccc; margin-bottom:8px; }
+.upload-area p { color:#666; font-size:.85rem; }
+.upload-area input[type=file] { display:none; }
+
+/* Panels */
+.panel { background:#161822; border:1px solid #222; border-radius:10px; margin-bottom:16px; overflow:hidden; }
+.panel-head { padding:12px 16px; font-weight:600; font-size:.9rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; background:#1a1d2e; }
+.panel-body { padding:16px; }
+
+/* Field grid */
+.field-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+.field { display:flex; flex-direction:column; gap:4px; }
+.field label { font-size:.8rem; color:#aaa; }
+.field select, .field input { background:#1a1d2e; border:1px solid #333; color:#e0e0e0; padding:8px 10px; border-radius:6px; font-size:.85rem; }
+.field select:focus, .field input:focus { outline:none; border-color:#667eea; }
+
+/* Buttons */
+.btn { padding:10px 20px; border:none; border-radius:8px; font-size:.85rem; font-weight:600; cursor:pointer; transition:.2s; }
+.btn:hover { transform:translateY(-1px); }
+.btn-primary { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+.btn-primary:hover { box-shadow:0 4px 15px rgba(102,126,234,.4); }
+.btn-success { background:linear-gradient(135deg,#4ade80,#22c55e); color:#000; }
+.btn-secondary { background:#2a2d3e; color:#ccc; }
+.btn:disabled { opacity:.4; cursor:not-allowed; transform:none; }
+.btn-row { display:flex; gap:10px; margin-top:16px; }
+
+/* Toast */
+.toast { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:8px; font-size:.85rem; z-index:9999; animation:slideIn .3s; }
+.toast.success { background:#1e3a2f; color:#4ade80; border:1px solid #2d5a3f; }
+.toast.error { background:#3a1e1e; color:#f87171; border:1px solid #5a2d2d; }
+@keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+/* Info text */
+.info { color:#888; font-size:.8rem; margin-top:8px; }
+.file-info { color:#4ade80; font-size:.85rem; margin-bottom:12px; }
+
+/* ── Timeline (Light Theme - 결과물) ── */
+.timeline-wrap { background:#fff; border-radius:8px; overflow:auto; margin-bottom:16px; }
+
+#timelineCanvas {
+  background: #fff;
+  color: #333;
+  font-family: 'Noto Sans KR','Segoe UI',sans-serif;
+  padding: 24px 20px 20px;
+  min-width: 900px;
+}
+#dataTimelineCanvas {
+  background: #fff;
+  color: #333;
+  font-family: 'Noto Sans KR','Segoe UI',sans-serif;
+  padding: 24px 20px 20px;
+  display: inline-block;
+}
+
+/* Title area */
+.tl-title-row { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+.tl-title { font-size:1.35rem; font-weight:700; color:#222; }
+.tl-legend { display:flex; flex-direction:column; gap:4px; font-size:.72rem; color:#555; }
+.tl-legend-item { display:flex; align-items:center; gap:6px; }
+.tl-legend-box { width:16px; height:12px; border-radius:2px; flex-shrink:0; }
+.tl-legend-box.deadline { border:2px dashed #e57373; background:transparent; }
+.tl-legend-box.ios { background:#BBDEFB; }
+.tl-legend-box.final { background:#CE93D8; }
+
+/* Grid */
+.tl-grid { display:grid; border-left:1px solid #ddd; border-top:1px solid #ddd; }
+.tl-cell { border-right:1px solid #ddd; border-bottom:1px solid #ddd; padding:0; display:flex; align-items:center; justify-content:center; font-size:.72rem; min-height:24px; position:relative; overflow:hidden; }
+
+/* Header cells */
+.tl-month { background:#D6EAF8; font-weight:700; font-size:.8rem; color:#1a3e5c; padding:4px 8px; }
+.tl-date { background:#EBF5FB; font-weight:600; font-size:.78rem; color:#333; padding:2px 4px; }
+.tl-day { background:#EBF5FB; font-size:.72rem; color:#555; padding:2px 4px; }
+
+/* Row labels */
+.tl-row-label { background:#f8f9fa; font-weight:600; font-size:.75rem; color:#444; padding:6px 10px; text-align:left; white-space:normal; line-height:1.4; writing-mode:horizontal-tb; overflow:visible !important; }
+
+/* Weekend */
+.tl-weekend { background:#EEEEEE !important; color:#999 !important; }
+
+/* Column highlights */
+/* deadline per-cell borders */
+.tl-col-ios { background:#E3F2FD !important; }
+.tl-col-final { background:#EDE7F6 !important; }
+.tl-col-standby { background:#FFEBEE !important; }
+
+/* Special date headers */
+.tl-date.highlight-deadline { color:#e53935; font-weight:700; }
+.tl-date.highlight-ios { background:#BBDEFB; color:#1565C0; font-weight:700; }
+.tl-date.highlight-final { background:#CE93D8; color:#fff; font-weight:700; }
+.tl-day.highlight-deadline { color:#e53935; }
+.tl-day.highlight-ios { background:#BBDEFB; color:#1565C0; }
+.tl-day.highlight-final { background:#CE93D8; color:#fff; }
+.tl-date.highlight-standby { background:#FFEBEE; color:#e53935; font-weight:700; }
+.tl-day.highlight-standby { background:#FFEBEE; color:#e53935; }
+
+/* Event blocks */
+.tl-event-area { padding:3px 2px; display:flex; flex-direction:column; gap:2px; align-items:stretch; }
+.tl-event { padding:3px 5px; border-radius:3px; font-size:.68rem; font-weight:600; text-align:center; white-space:pre-line; line-height:1.2; overflow:hidden; word-break:break-word; cursor:grab; user-select:none; }
+.tl-event.ev-work { background:#E0E0E0; color:#333; }
+.tl-event.ev-build { background:#C8E6C9; color:#2E7D32; }
+.tl-event.ev-bvt { background:#FFF9C4; color:#F57F17; }
+.tl-event.ev-deliver { background:#E8EAF6; color:#333; }
+.tl-event.ev-ios { background:#BBDEFB; color:#1565C0; }
+.tl-event.ev-live { background:#F8BBD0; color:#C62828; }
+.tl-event.ev-data { background:#E1BEE7; color:#6A1B9A; }
+.tl-event.ev-holiday { background:#F5F5F5; color:#999; font-weight:400; }
+.tl-event.ev-standby { background:#FFCDD2; color:#C62828; font-weight:700; }
+
+/* Holiday full-cell */
+.tl-holiday-cell { background:#f9f9f9; }
+.tl-holiday-text { color:#bbb; font-size:.7rem; font-weight:600; }
+
+/* Interactive events */
+.tl-event:hover { box-shadow:0 0 0 1px rgba(0,0,0,.15); }
+.tl-event:active { cursor:grabbing; }
+.tl-event.selected { box-shadow:0 0 0 2px #667eea; }
+.tl-event.editing { cursor:text; user-select:auto; outline:none; white-space:pre-wrap; }
+.tl-event.editing:focus { box-shadow:0 0 0 2px #667eea; }
+.tl-event.drag-placeholder { opacity:.25; }
+.tl-event-area.drag-over { outline:2px dashed #667eea; outline-offset:-1px; background:rgba(102,126,234,.08); }
+
+/* Edit toolbar */
+.tl-toolbar { display:none; position:fixed; z-index:10001; background:#fff; border:1px solid #ddd; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:6px 8px; gap:6px; align-items:center; font-size:.75rem; }
+.tl-toolbar.show { display:flex; }
+.tl-toolbar button { background:#f5f5f5; border:1px solid #ddd; border-radius:4px; padding:3px 8px; cursor:pointer; font-size:.72rem; font-family:inherit; }
+.tl-toolbar button:hover { background:#e0e0e0; }
+.tl-toolbar select { border:1px solid #ddd; border-radius:4px; padding:2px 4px; font-size:.72rem; font-family:inherit; }
+.tl-toolbar .tl-color-opt { width:18px; height:18px; border-radius:3px; border:2px solid transparent; cursor:pointer; display:inline-block; }
+.tl-toolbar .tl-color-opt:hover, .tl-toolbar .tl-color-opt.active { border-color:#333; }
+.tl-toolbar .tl-tb-sep { width:1px; height:18px; background:#ddd; }
+.tl-toolbar .tl-tb-del { color:#e53935; }
+
+/* Add event button in cells */
+.tl-add-btn { width:16px; height:16px; border-radius:50%; background:#667eea; color:#fff; font-size:12px; line-height:16px; text-align:center; cursor:pointer; opacity:0; transition:opacity .15s; position:absolute; top:2px; right:2px; z-index:2; }
+.tl-cell:hover .tl-add-btn { opacity:.7; }
+.tl-add-btn:hover { opacity:1 !important; transform:scale(1.15); }
+
+/* ── Mode Tab Bar ── */
+.mode-tab-bar { display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid #2a2d3e; }
+.mode-tab { flex:1; text-align:center; padding:12px 0; background:transparent; border:none; color:#666; font-size:.95rem; font-weight:600; cursor:pointer; transition:.3s; border-bottom:3px solid transparent; margin-bottom:-2px; font-family:inherit; }
+.mode-tab:hover { color:#aaa; }
+.mode-tab.active { color:#fff; border-bottom-color:#667eea; }
+.mode-content { display:none; }
+.mode-content.show { display:block; }
+
+/* ── Data Update specific ── */
+.schedule-table { width:100%; border-collapse:collapse; margin:12px 0; }
+.schedule-table th, .schedule-table td { padding:8px 12px; text-align:center; border:1px solid #333; font-size:.82rem; }
+.schedule-table th { background:#1a1d2e; color:#aaa; font-weight:600; }
+.schedule-table td { background:#161822; }
+.schedule-table select { background:#1a1d2e; border:1px solid #444; color:#e0e0e0; padding:6px 8px; border-radius:4px; font-size:.82rem; font-family:inherit; cursor:pointer; }
+.schedule-table select:focus { outline:none; border-color:#667eea; }
+.schedule-table .row-label { text-align:left; font-weight:600; color:#ccc; background:#1a1d2e; }
+.date-preview { font-size:.7rem; color:#4ade80; margin-top:3px; }
+.holiday-list { margin:8px 0; padding:8px 12px; background:#1a1d2e; border-radius:6px; font-size:.82rem; }
+.holiday-item { display:flex; justify-content:space-between; align-items:center; padding:4px 0; border-bottom:1px solid #222; }
+.holiday-item:last-child { border-bottom:none; }
+.holiday-badge { background:#5a2d2d; color:#f87171; padding:2px 8px; border-radius:4px; font-size:.72rem; }
+
+/* ── Data Timeline Grid (Light) ── */
+.dt-header { background:#D6EAF8; font-weight:700; font-size:.78rem; color:#1a3e5c; }
+.dt-group-label { background:#f0f0f0; font-weight:700; font-size:.78rem; color:#333; writing-mode:horizontal-tb; }
+.dt-time-label { background:#f8f9fa; font-weight:600; font-size:.72rem; color:#555; }
+.dt-event { padding:6px 4px; border-radius:3px; font-size:.72rem; font-weight:600; text-align:center; white-space:pre-line; line-height:1.3; cursor:grab; user-select:none; }
+.dt-event.dt-delivery { background:#FFF9C4; color:#F57F17; }
+.dt-event.dt-deadline { background:#C8E6C9; color:#2E7D32; }
+.dt-event.dt-test { background:#BBDEFB; color:#1565C0; }
+.dt-event.dt-update { background:#F8BBD0; color:#C62828; }
+.dt-event.dt-holiday { background:#F5F5F5; color:#999; font-weight:400; }
+.dt-final-delivery { background:#FDD835 !important; color:#E65100 !important; }
+.dt-final-deadline { background:#81C784 !important; color:#1B5E20 !important; }
+.dt-final-test { background:#64B5F6 !important; color:#0D47A1 !important; }
+
+/* Responsive */
+@media(max-width:768px) {
+  .container { padding:12px; }
+  .field-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Timeline Infographic Generator</h1>
+  <p class="subtitle">타임라인 인포그래픽 생성 도구</p>
+
+  <div class="mode-tab-bar">
+    <button class="mode-tab active" data-mode="build">빌드 업데이트</button>
+    <button class="mode-tab" data-mode="data">데이터 업데이트</button>
+  </div>
+
+  <!-- ===== BUILD UPDATE MODE ===== -->
+  <div class="mode-content show" id="buildMode">
+  <div class="step-bar">
+    <div class="step-item active" id="step1">1. 파일 업로드</div>
+    <div class="step-item" id="step2">2. 미리보기 & 설정</div>
+    <div class="step-item" id="step3">3. 다운로드</div>
+  </div>
+
+  <!-- Section 1: Upload -->
+  <div class="section show" id="sec1">
+    <div class="upload-area" id="uploadArea">
+      <h3>엑셀 파일을 여기에 드래그하거나 클릭하세요</h3>
+      <p>.xlsx, .xls 파일 지원</p>
+      <input type="file" id="fileInput" accept=".xlsx,.xls">
+    </div>
+    <div id="fileStatus"></div>
+
+    <div class="panel" id="panelSettings" style="display:none">
+      <div class="panel-head">시트 & 마일스톤 선택</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>시트 선택</label>
+            <select id="sheetSelect"><option value="">시트를 선택하세요</option></select>
+          </div>
+          <div class="field">
+            <label>마일스톤 입력 (예: M24)</label>
+            <input type="text" id="msInput" placeholder="M24" disabled list="msList">
+            <datalist id="msList"></datalist>
+            <p class="info" id="msHint" style="display:none"></p>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnGenerate" disabled>타임라인 생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2: Preview & Settings -->
+  <div class="section" id="sec2">
+    <div class="panel">
+      <div class="panel-head">타임라인 설정</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>타이틀</label>
+            <input type="text" id="inputTitle" placeholder="자동 생성됨">
+          </div>
+          <div class="field">
+            <label>그룹 1 라벨</label>
+            <input type="text" id="inputGroup1" value="작업 마감 & 머지 일정">
+          </div>
+          <div class="field">
+            <label>그룹 2 라벨</label>
+            <input type="text" id="inputGroup2" value="빌드 발행 & 테스트">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btnBack">이전</button>
+          <button class="btn btn-primary" id="btnRefresh">새로고침</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline-wrap">
+      <div id="timelineCanvas"></div>
+    </div>
+
+    <!-- Edit toolbar (fixed, hidden by default) -->
+    <div class="tl-toolbar" id="tlToolbar">
+      <select id="tbFontSize" title="글자 크기">
+        <option value="9">9px</option>
+        <option value="10">10px</option>
+        <option value="11" selected>11px</option>
+        <option value="12">12px</option>
+        <option value="13">13px</option>
+        <option value="14">14px</option>
+      </select>
+      <div class="tl-tb-sep"></div>
+      <span style="font-size:.65rem;color:#888;">색상:</span>
+      <span class="tl-color-opt" data-cls="ev-work" style="background:#E0E0E0" title="작업/머지"></span>
+      <span class="tl-color-opt" data-cls="ev-build" style="background:#C8E6C9" title="빌드 제작"></span>
+      <span class="tl-color-opt" data-cls="ev-bvt" style="background:#FFF9C4" title="BVT"></span>
+      <span class="tl-color-opt" data-cls="ev-deliver" style="background:#E8EAF6" title="납품"></span>
+      <span class="tl-color-opt" data-cls="ev-ios" style="background:#BBDEFB" title="iOS 검수"></span>
+      <span class="tl-color-opt" data-cls="ev-live" style="background:#F8BBD0" title="정기점검"></span>
+      <span class="tl-color-opt" data-cls="ev-data" style="background:#E1BEE7" title="데이터 마감"></span>
+      <span class="tl-color-opt" data-cls="ev-standby" style="background:#FFCDD2" title="대기"></span>
+      <div class="tl-tb-sep"></div>
+      <button id="tbDelete" class="tl-tb-del" title="삭제">✕</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-success" id="btnDownload">PNG 다운로드</button>
+    </div>
+  </div>
+
+  <!-- Section 3: Download complete -->
+  <div class="section" id="sec3">
+    <div class="panel">
+      <div class="panel-head">다운로드 완료</div>
+      <div class="panel-body" style="text-align:center; padding:32px;">
+        <p style="font-size:1.1rem; color:#4ade80; margin-bottom:12px;">타임라인 이미지가 다운로드되었습니다!</p>
+        <div class="btn-row" style="justify-content:center;">
+          <button class="btn btn-primary" id="btnRestart">처음으로</button>
+          <button class="btn btn-success" id="btnRedownload">다시 다운로드</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /buildMode -->
+
+  <!-- ===== DATA UPDATE MODE ===== -->
+  <div class="mode-content" id="dataMode">
+  <div class="step-bar">
+    <div class="step-item active" id="dStep1">1. 일정 설정</div>
+    <div class="step-item" id="dStep2">2. 미리보기 & 설정</div>
+    <div class="step-item" id="dStep3">3. 다운로드</div>
+  </div>
+
+  <!-- Data Step 1: Schedule Input -->
+  <div class="section show" id="dSec1">
+    <div class="panel">
+      <div class="panel-head">정기 업데이트 날짜</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>업데이트 날짜 선택 (클릭하여 캘린더 열기)</label>
+            <input type="date" id="dataUpdateDate" style="cursor:pointer;" onclick="this.showPicker()">
+          </div>
+          <div class="field">
+            <label>업데이트 주기</label>
+            <select id="dataWeekMode">
+              <option value="1">1주</option>
+              <option value="2" selected>2주</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>타이틀</label>
+            <input type="text" id="dataTitle" placeholder="자동 생성됨">
+          </div>
+        </div>
+        <p class="info" id="dataDateInfo" style="display:none"></p>
+      </div>
+    </div>
+
+    <div class="panel" id="dataSchedulePanel" style="display:none">
+      <div class="panel-head">일정 설정 (요일)</div>
+      <div class="panel-body">
+        <div id="scheduleTableWrap"></div>
+        <div id="holidayArea" style="display:none">
+          <p style="font-size:.82rem; color:#aaa; margin-bottom:4px;">해당 기간 공휴일:</p>
+          <div class="holiday-list" id="holidayList"></div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <p style="font-size:.82rem; color:#aaa; margin-bottom:6px;">추가 휴일 입력 (전사 휴무 등)</p>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="date" id="customHolidayDate" style="background:#1a1d2e; border:1px solid #333; color:#e0e0e0; padding:6px 10px; border-radius:6px; font-size:.82rem; font-family:inherit; cursor:pointer;" onclick="this.showPicker()">
+            <input type="text" id="customHolidayName" placeholder="사유 (예: 전사 휴무)" style="background:#1a1d2e; border:1px solid #333; color:#e0e0e0; padding:6px 10px; border-radius:6px; font-size:.82rem; flex:1; font-family:inherit;">
+            <button class="btn btn-secondary" id="btnAddHoliday" style="padding:6px 14px; font-size:.82rem;">추가</button>
+          </div>
+          <div class="holiday-list" id="customHolidayList" style="margin-top:6px;"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnDataGenerate">타임라인 생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Step 2: Preview -->
+  <div class="section" id="dSec2">
+    <div class="panel">
+      <div class="panel-head">타임라인 설정</div>
+      <div class="panel-body">
+        <div class="field-grid">
+          <div class="field">
+            <label>타이틀</label>
+            <input type="text" id="dataInputTitle" placeholder="자동 생성됨">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="btnDataBack">이전</button>
+          <button class="btn btn-primary" id="btnDataRefresh">새로고침</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline-wrap" style="display:inline-block;background:transparent;">
+      <div id="dataTimelineCanvas"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-success" id="btnDataDownload">PNG 다운로드</button>
+    </div>
+  </div>
+
+  <!-- Data Step 3: Download complete -->
+  <div class="section" id="dSec3">
+    <div class="panel">
+      <div class="panel-head">다운로드 완료</div>
+      <div class="panel-body" style="text-align:center; padding:32px;">
+        <p style="font-size:1.1rem; color:#4ade80; margin-bottom:12px;">타임라인 이미지가 다운로드되었습니다!</p>
+        <div class="btn-row" style="justify-content:center;">
+          <button class="btn btn-primary" id="btnDataRestart">처음으로</button>
+          <button class="btn btn-success" id="btnDataRedownload">다시 다운로드</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /dataMode -->
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+
+  /* ── State ── */
+  let workbook = null;
+  let sheetData = null;     // 2D array of current sheet
+  let milestones = [];       // [{name, row, updateInfo, endRow}, ...]
+  let dateHeaders = null;    // {months, dates, days, monthRow, dateRow, dayRow}
+  let parsedTimeline = null; // final parsed data for rendering
+
+  /* ── DOM refs ── */
+  const $uploadArea = $('uploadArea');
+  const $fileInput = $('fileInput');
+  const $fileStatus = $('fileStatus');
+  const $panelSettings = $('panelSettings');
+  const $sheetSelect = $('sheetSelect');
+  const $msInput = $('msInput');
+  const $msHint = $('msHint');
+  const $msList = $('msList');
+  const $btnGenerate = $('btnGenerate');
+  const $sec1 = $('sec1'), $sec2 = $('sec2'), $sec3 = $('sec3');
+  const $step1 = $('step1'), $step2 = $('step2'), $step3 = $('step3');
+  const $timelineCanvas = $('timelineCanvas');
+  const $inputTitle = $('inputTitle');
+  const $inputGroup1 = $('inputGroup1');
+  const $inputGroup2 = $('inputGroup2');
+
+  /* ── Navigation ── */
+  function goStep(n) {
+    [$sec1,$sec2,$sec3].forEach(s => s.classList.remove('show'));
+    [$step1,$step2,$step3].forEach(s => { s.classList.remove('active','done'); });
+    if (n >= 1) { $sec1.classList.toggle('show', n===1); $step1.classList.add(n===1?'active':'done'); }
+    if (n >= 2) { $sec2.classList.toggle('show', n===2); $step2.classList.add(n===2?'active':'done'); }
+    if (n >= 3) { $sec3.classList.toggle('show', n===3); $step3.classList.add(n===3?'active':'done'); }
+    [n===1?$sec1:null, n===2?$sec2:null, n===3?$sec3:null].filter(Boolean).forEach(s => s.classList.add('show'));
+  }
+
+  /* ── Toast ── */
+  function showToast(msg, type='success') {
+    const t = document.createElement('div');
+    t.className = 'toast ' + type;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  /* ── File Upload ── */
+  $uploadArea.addEventListener('click', () => $fileInput.click());
+  $uploadArea.addEventListener('dragover', e => { e.preventDefault(); $uploadArea.classList.add('drag'); });
+  $uploadArea.addEventListener('dragleave', () => $uploadArea.classList.remove('drag'));
+  $uploadArea.addEventListener('drop', e => { e.preventDefault(); $uploadArea.classList.remove('drag'); handleFile(e.dataTransfer.files[0]); });
+  $fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(file) {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx','xls'].includes(ext)) { showToast('xlsx 또는 xls 파일만 지원합니다','error'); return; }
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        workbook = XLSX.read(e.target.result, { type:'array' });
+        $fileStatus.innerHTML = `<span class="file-info">파일 로드 완료: ${esc(file.name)} (${workbook.SheetNames.length}개 시트)</span>`;
+        populateSheetSelect();
+        $panelSettings.style.display = '';
+      } catch(err) {
+        showToast('파일 읽기 실패: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function populateSheetSelect() {
+    $sheetSelect.innerHTML = '<option value="">시트를 선택하세요</option>';
+    let autoIdx = -1;
+    workbook.SheetNames.forEach((name, i) => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      $sheetSelect.appendChild(opt);
+      if (name.includes('타임라인') && !name.includes('삭제') && autoIdx === -1) autoIdx = i;
+    });
+    if (autoIdx >= 0) {
+      $sheetSelect.value = workbook.SheetNames[autoIdx];
+      onSheetChange();
+    }
+  }
+
+  $sheetSelect.addEventListener('change', onSheetChange);
+
+  function onSheetChange() {
+    const name = $sheetSelect.value;
+    if (!name) { $msInput.disabled = true; $msInput.value = ''; $msHint.style.display = 'none'; $msList.innerHTML = ''; return; }
+
+    const ws = workbook.Sheets[name];
+    sheetData = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+
+    // Parse headers and milestones
+    parseHeaders();
+    parseMilestones();
+
+    $msInput.disabled = false;
+    $msList.innerHTML = '';
+    milestones.forEach(ms => {
+      const opt = document.createElement('option');
+      opt.value = ms.name;
+      opt.label = `${ms.name} - ${ms.updateInfo}`;
+      $msList.appendChild(opt);
+    });
+
+    $msHint.style.display = '';
+    $msHint.textContent = `감지된 마일스톤: ${milestones.map(m => m.name).join(', ')}`;
+    $msInput.value = '';
+    $btnGenerate.disabled = true;
+  }
+
+  $msInput.addEventListener('input', () => {
+    const val = $msInput.value.trim().toUpperCase();
+    const found = milestones.find(m => m.name.toUpperCase() === val);
+    $btnGenerate.disabled = !found;
+    if (found) {
+      $msHint.textContent = `${found.name} - ${found.updateInfo}`;
+      $msHint.style.color = '#4ade80';
+    } else if (val) {
+      $msHint.textContent = `"${val}" 마일스톤을 찾을 수 없습니다. 감지된 목록: ${milestones.map(m => m.name).join(', ')}`;
+      $msHint.style.color = '#f87171';
+    } else {
+      $msHint.textContent = `감지된 마일스톤: ${milestones.map(m => m.name).join(', ')}`;
+      $msHint.style.color = '#888';
+    }
+  });
+
+  /* ── Parse Excel Header Rows ── */
+  function parseHeaders() {
+    dateHeaders = null;
+    if (!sheetData || sheetData.length < 14) return;
+
+    // Find the header rows by scanning for the pattern
+    // Row with "구분" in col 0 and months in col 3+ → month row
+    // Row with day numbers (1-31) → date row
+    // Row with 월/화/수/목/금/토/일 → day row
+    let monthRowIdx = -1, dateRowIdx = -1, dayRowIdx = -1;
+
+    for (let r = 0; r < Math.min(sheetData.length, 20); r++) {
+      const row = sheetData[r];
+      if (!row) continue;
+      const str0 = String(row[0] || '').trim();
+      const str2 = String(row[2] || '').trim();
+
+      // Month row: has "구분" in col 0 and month names (X월) in cols
+      if (str0 === '구분' || str0 === '') {
+        for (let c = 3; c < Math.min(row.length, 200); c++) {
+          const v = String(row[c] || '').trim();
+          if (/^\d{1,2}월$/.test(v)) {
+            if (monthRowIdx === -1) monthRowIdx = r;
+            break;
+          }
+        }
+      }
+
+      // Day row: has 마일스톤/항목/내용 in first cols and 월/화/수/목/금 pattern
+      if (str0 === '마일스톤' || str2 === '내용') {
+        dayRowIdx = r;
+      }
+
+      // Date row: has mostly numbers 1-31 in cols 3+
+      if (monthRowIdx >= 0 && dateRowIdx === -1 && r > monthRowIdx) {
+        let numCount = 0;
+        for (let c = 3; c < Math.min(row.length, 60); c++) {
+          const v = row[c];
+          if (typeof v === 'number' && v >= 1 && v <= 31) numCount++;
+        }
+        if (numCount > 10) dateRowIdx = r;
+      }
+    }
+
+    if (dateRowIdx < 0) {
+      // Try to detect via pattern
+      for (let r = 5; r < Math.min(sheetData.length, 20); r++) {
+        let numCount = 0;
+        for (let c = 3; c < Math.min((sheetData[r]||[]).length, 60); c++) {
+          const v = sheetData[r][c];
+          if (typeof v === 'number' && v >= 1 && v <= 31) numCount++;
+        }
+        if (numCount > 10) { dateRowIdx = r; break; }
+      }
+    }
+
+    if (dayRowIdx < 0 && dateRowIdx >= 0) dayRowIdx = dateRowIdx + 1;
+    if (monthRowIdx < 0 && dateRowIdx >= 0) monthRowIdx = dateRowIdx - 3;
+
+    if (dateRowIdx < 0) return;
+
+    // Build month mapping: col → month name
+    const monthMap = {};
+    if (monthRowIdx >= 0) {
+      const mRow = sheetData[monthRowIdx];
+      let lastMonth = '';
+      for (let c = 3; c < (mRow||[]).length; c++) {
+        const v = String(mRow[c] || '').trim();
+        if (/^\d{1,2}월$/.test(v)) lastMonth = v;
+        if (lastMonth) monthMap[c] = lastMonth;
+      }
+    }
+
+    // Build dates array: col → {date, day, month}
+    const dRow = sheetData[dateRowIdx] || [];
+    const wRow = sheetData[dayRowIdx] || [];
+    const dates = {};
+    for (let c = 3; c < dRow.length; c++) {
+      const dateVal = dRow[c];
+      const dayVal = String(wRow[c] || '').trim();
+      if (dateVal === '' && dayVal === '') continue;
+      dates[c] = {
+        date: dateVal,
+        day: dayVal,
+        month: monthMap[c] || ''
+      };
+    }
+
+    dateHeaders = { monthRowIdx, dateRowIdx, dayRowIdx, dates, monthMap, startCol: 3 };
+  }
+
+  /* ── Parse Milestones ── */
+  function parseMilestones() {
+    milestones = [];
+    if (!sheetData || !dateHeaders) return;
+
+    const startRow = dateHeaders.dayRowIdx + 1;
+    for (let r = startRow; r < sheetData.length; r++) {
+      const row = sheetData[r];
+      if (!row) continue;
+      const col0 = String(row[0] || '').trim().replace(/\r?\n/g, ' ');
+      if (/^M\d+/.test(col0)) {
+        const col1 = String(row[1] || '').trim().replace(/\r?\n/g, ' ');
+        milestones.push({
+          name: col0.split(/\s/)[0], // e.g., "M24"
+          updateInfo: col1,           // e.g., "빌드 업데이트 (4/21)"
+          startRow: r,
+          endRow: -1                  // will be set
+        });
+      }
+    }
+
+    // Set endRow for each milestone
+    for (let i = 0; i < milestones.length; i++) {
+      milestones[i].endRow = (i + 1 < milestones.length)
+        ? milestones[i + 1].startRow - 1
+        : sheetData.length - 1;
+    }
+  }
+
+  /* ── Generate Timeline ── */
+  $btnGenerate.addEventListener('click', generateTimeline);
+  $('btnRefresh').addEventListener('click', () => { renderTimeline(); });
+  $('btnBack').addEventListener('click', () => goStep(1));
+  $('btnRestart').addEventListener('click', () => { goStep(1); });
+  $('btnRedownload').addEventListener('click', downloadPNG);
+  $('btnDownload').addEventListener('click', downloadPNG);
+
+  function generateTimeline() {
+    const val = $msInput.value.trim().toUpperCase();
+    const ms = milestones.find(m => m.name.toUpperCase() === val);
+    if (!ms) { showToast('마일스톤을 찾을 수 없습니다', 'error'); return; }
+    parsedTimeline = parseTimelineData(ms);
+
+    if (!parsedTimeline || parsedTimeline.columns.length === 0) {
+      showToast('해당 마일스톤에 데이터가 없습니다', 'error');
+      return;
+    }
+
+    // Auto-generate title
+    const updateDate = ms.updateInfo.match(/\(([^)]+)\)/);
+    $inputTitle.value = `[${ms.name}] ${updateDate ? updateDate[1] : ''} 빌드 업데이트 타임 라인`;
+
+    goStep(2);
+    renderTimeline();
+  }
+
+  /* ── Parse Timeline Data for a Milestone (Routine Template) ── */
+  function parseTimelineData(ms) {
+    // 1. Collect raw rows and extract markers
+    const markers = { app:[], bvt:[], deliv:[], ios:null, live:null, work:[] };
+
+    for (let r = ms.startRow; r <= ms.endRow; r++) {
+      const row = sheetData[r];
+      if (!row) continue;
+      const cat = String(row[2] || '').trim().replace(/\r?\n/g, ' ');
+      collectRowEvents(row).forEach(ev => {
+        const t = ev.text;
+        if ((cat.includes('빌드') || cat.includes('패치')) && /app/i.test(t)) markers.app.push(ev.col);
+        else if (/QA/i.test(cat) && /bvt/i.test(t)) markers.bvt.push(ev.col);
+        else if (cat.includes('납품') && !/iOS|라이브/.test(cat) && /납품/.test(t)) markers.deliv.push(ev.col);
+        else if ((cat.includes('iOS') || cat.includes('검수')) && !markers.ios) markers.ios = ev.col;
+        else if ((cat.includes('라이브') || cat.includes('배포')) && /정기/.test(t) && !markers.live) markers.live = ev.col;
+        else if (cat.includes('작업')) markers.work.push(ev);
+      });
+    }
+
+    markers.app.sort((a,b) => a-b);
+    markers.bvt.sort((a,b) => a-b);
+    markers.deliv.sort((a,b) => a-b);
+
+    if (markers.app.length === 0 && !markers.live) return { columns:[], group1:[], group2:[] };
+
+    // 2. Milestone info
+    const msName = ms.name;
+    const prevMs = 'M' + (parseInt(msName.replace(/\D/g,'')) - 1);
+    const dateMatch = ms.updateInfo.match(/\(([^)]+)\)/);
+    const dateStr = dateMatch ? dateMatch[1] : '';
+    const app = markers.app, ios = markers.ios, live = markers.live;
+
+    // 3. Assign BVTs to builds by proximity
+    const bvt = [[],[],[]];
+    markers.bvt.forEach(c => {
+      if (app[2] && c >= app[2] - 1) bvt[2].push(c);
+      else if (app[1] && c >= app[1] - 1) bvt[1].push(c);
+      else bvt[0].push(c);
+    });
+
+    // 4. Assign deliveries
+    const deliv = [null, null, null];
+    markers.deliv.forEach((c,i) => { if (i < 3) deliv[i] = c; });
+    // Fallback: delivery = last BVT of that build + 1
+    for (let i = 0; i < 3; i++) {
+      if (!deliv[i] && bvt[i].length) deliv[i] = bvt[i][bvt[i].length-1] + 1;
+    }
+
+    // 5. Generate routine events
+    const g1 = [], g2 = [];
+
+    // ── Group 1: 작업 마감 & 머지 일정 ──
+    if (app[0]) {
+      g1.push({ col: app[0]-1, text: '1차\n작업\n마감' });
+      g1.push({ col: app[0], text: prevMs+' >\nMain\n머지' });
+    }
+    if (app[1]) {
+      g1.push({ col: app[1]-1, text: '2차\n작업\n마감' });
+    }
+    if (app[2]) {
+      g1.push({ col: app[2]-1, text: '3차\n작업\n마감' });
+    }
+    if (live) {
+      g1.push({ col: live - 1, text: '최종\n데이터\n마감' });
+      g1.push({ col: live, text: dateStr+'\n정기 업\n데이트' });
+    }
+
+    // ── Group 2: 빌드 발행 & 테스트 ──
+    if (app[0]) {
+      const p = app[0]-2;
+      g2.push({ col: p, text: msName+'\n스트림\n생성' });
+      g2.push({ col: p, text: '팀시티\n세팅' });
+      g2.push({ col: p, text: '테스트\n빌드\n발행' });
+      g2.push({ col: app[0], text: '1차\n빌드\n제작' });
+    }
+    bvt[0].forEach(c => g2.push({ col:c, text:'BVT' }));
+    if (deliv[0]) g2.push({ col: deliv[0], text: '1차\n빌드\n납품' });
+
+    if (app[1]) g2.push({ col: app[1], text: '2차\n빌드\n제작' });
+    bvt[1].forEach(c => g2.push({ col:c, text:'BVT' }));
+    if (deliv[1]) g2.push({ col: deliv[1], text: '2차\n빌드\n납품' });
+
+    if (app[2]) g2.push({ col: app[2], text: '3차\n빌드\n제작' });
+    bvt[2].forEach(c => g2.push({ col:c, text:'BVT' }));
+    if (ios) g2.push({ col: ios - 1, text: '3차\n빌드\n납품' });
+    else if (deliv[2]) g2.push({ col: deliv[2], text: '3차\n빌드\n납품' });
+    if (ios) g2.push({ col: ios, text: 'IOS\n검수' });
+    // (필요시) 데이터납품: iOS 검수 다음날부터 대기 전날까지
+    if (ios && live) {
+      for (let c = ios + 1; c <= live - 2; c++) {
+        const info = dateHeaders.dates[c];
+        if (info && info.day !== '토' && info.day !== '일') {
+          g2.push({ col: c, text: '(필요시)\n데이터납품' });
+        }
+      }
+    }
+    if (live) {
+      g2.push({ col: live - 1, text: '최종\n데이터\n납품' });
+      g2.push({ col: live, text: dateStr+'\n정기 업\n데이트' });
+    }
+
+    // 7. Column range
+    const allCols = [...g1,...g2].map(e => e.col);
+    let minCol = Math.max(dateHeaders.startCol, Math.min(...allCols) - 2);
+    let maxCol = Math.min((sheetData[dateHeaders.dateRowIdx]||[]).length-1, Math.max(...allCols) + 1);
+    const columns = buildColumns(minCol, maxCol);
+
+    return { columns, group1:[{category:'routine',events:g1}], group2:[{category:'routine',events:g2}], minCol, maxCol };
+  }
+
+  function collectRowEvents(row) {
+    const events = [];
+    if (!row || !dateHeaders) return events;
+
+    for (let c = dateHeaders.startCol; c < row.length; c++) {
+      const val = String(row[c] || '').trim();
+      if (!val) continue;
+      events.push({ col: c, text: val });
+    }
+    return events;
+  }
+
+  /* ── Build Columns (collapsing weekends) ── */
+  function buildColumns(minCol, maxCol) {
+    const columns = [];
+    let c = minCol;
+    while (c <= maxCol) {
+      const info = dateHeaders.dates[c];
+      if (!info) { c++; continue; }
+
+      const day = info.day;
+      if (day === '토') {
+        // Weekend: merge 토+일
+        const nextInfo = dateHeaders.dates[c + 1];
+        const satDate = info.date;
+        const sunDate = nextInfo ? nextInfo.date : '';
+        columns.push({
+          type: 'weekend',
+          cols: [c, c + 1],
+          dateLabel: sunDate ? `${satDate}~\n${sunDate}` : String(satDate),
+          dayLabel: '토~\n일',
+          month: info.month,
+          isWeekend: true
+        });
+        c += 2;
+      } else {
+        columns.push({
+          type: 'weekday',
+          cols: [c],
+          dateLabel: String(info.date),
+          dayLabel: day,
+          month: info.month,
+          isWeekend: false
+        });
+        c++;
+      }
+    }
+    return columns;
+  }
+
+  /* ── Classify Event Color ── */
+  function classifyEvent(text) {
+    if (/^대기$/.test(text)) return 'ev-standby';
+    if (/BVT/i.test(text)) return 'ev-bvt';
+    if (/IOS|검수/i.test(text)) return 'ev-ios';
+    if (/정기.*업|정기\s*점검/.test(text)) return 'ev-live';
+    if (/빌드\s*제작|스트림|세팅|빌드\s*발행/i.test(text)) return 'ev-build';
+    if (/빌드\s*납품|데이터\s*납품|데이터납품/.test(text)) return 'ev-deliver';
+    if (/작업\s*마감|최종.*마감|데이터\s*마감/.test(text)) return 'ev-data';
+    if (/휴무/i.test(text)) return 'ev-holiday';
+    if (/Main|머지|올리기/i.test(text)) return 'ev-work';
+    return 'ev-work';
+  }
+
+  /* ── Determine Column Highlight ── */
+  function getColumnHighlight(colIndices, allEvents) {
+    for (const ev of allEvents) {
+      if (!colIndices.includes(ev.col)) continue;
+      if (/정기\s*점검|정기\s*업데이트|정기 업/.test(ev.text)) return 'final';
+      if (/ios|검수/.test(ev.text.toLowerCase())) return 'ios';
+      if (/^대기$/.test(ev.text)) return 'standby';
+    }
+    return null;
+  }
+
+  function getDeadlineCols(allEvents) {
+    const cols = new Set();
+    allEvents.forEach(ev => {
+      if (/빌드\s*납품/.test(ev.text) || /IOS|검수/i.test(ev.text) || /BVT/i.test(ev.text) || (/최종/.test(ev.text) && /마감/.test(ev.text))) {
+        cols.add(ev.col);
+      }
+    });
+    return cols;
+  }
+
+  /* ── Render Timeline ── */
+  function renderTimeline() {
+    if (!parsedTimeline) return;
+
+    const { columns, group1, group2 } = parsedTimeline;
+    const title = $inputTitle.value || '타임라인';
+    const g1Label = $inputGroup1.value || '작업 마감 & 머지 일정';
+    const g2Label = $inputGroup2.value || '빌드 발행 & 테스트';
+
+    // Collect all events for highlight detection
+    const allEvents = [];
+    [...group1, ...group2].forEach(r => allEvents.push(...r.events));
+
+    const deadlineCols = getDeadlineCols(allEvents);
+
+    // Calculate column highlights
+    const colHighlights = columns.map(col => {
+      const hl = getColumnHighlight(col.cols, allEvents);
+      const isDL = col.cols.some(c => deadlineCols.has(c));
+      return { highlight: hl, isDeadline: isDL };
+    });
+
+    // Determine month spans
+    const monthSpans = [];
+    let curMonth = '';
+    let spanStart = 0;
+    columns.forEach((col, i) => {
+      const m = col.month;
+      if (m && m !== curMonth) {
+        if (curMonth) monthSpans.push({ month: curMonth, start: spanStart, end: i - 1 });
+        curMonth = m;
+        spanStart = i;
+      }
+    });
+    if (curMonth) monthSpans.push({ month: curMonth, start: spanStart, end: columns.length - 1 });
+
+    // Build events per column for each group
+    const g1Events = buildGroupEvents(group1, columns);
+    const g2Events = buildGroupEvents(group2, columns);
+
+    // Calculate max stack height for each group
+    const g1MaxStack = Math.max(1, ...g1Events.map(e => e.length));
+    const g2MaxStack = Math.max(1, ...g2Events.map(e => e.length));
+
+    // Grid dimensions
+    const numCols = columns.length + 1; // +1 for row label column
+    const labelColWidth = '120px';
+    const weekdayWidth = '64px';
+    const weekendWidth = '32px';
+    const colWidths = [labelColWidth, ...columns.map(c => c.isWeekend ? weekendWidth : weekdayWidth)].join(' ');
+
+    // Build HTML
+    let html = '';
+
+    // Title row
+    html += `<div class="tl-title-row">
+      <div class="tl-title">${esc(title)}</div>
+      <div class="tl-legend">
+        <div class="tl-legend-item"><div class="tl-legend-box deadline"></div>대기 필요 날짜</div>
+        <div class="tl-legend-item"><div class="tl-legend-box ios"></div>IOS 검수 날짜</div>
+        <div class="tl-legend-item"><div class="tl-legend-box final"></div>최종 업데이트 날짜</div>
+      </div>
+    </div>`;
+
+    // Grid
+    const totalRows = 3 + 1 + 1; // month, date, day, group1, group2
+    html += `<div class="tl-grid" style="grid-template-columns:${colWidths};">`;
+
+    // ── Month row (row 1) ──
+    html += `<div class="tl-cell tl-month" style="grid-column:1;grid-row:1;"></div>`;
+    monthSpans.forEach(ms => {
+      const span = ms.end - ms.start + 1;
+      html += `<div class="tl-cell tl-month" style="grid-column:${ms.start + 2}/span ${span};grid-row:1;">${esc(ms.month)}</div>`;
+    });
+    // Fill gaps
+    const coveredCols = new Set();
+    monthSpans.forEach(ms => { for (let i = ms.start; i <= ms.end; i++) coveredCols.add(i); });
+    columns.forEach((_, i) => {
+      if (!coveredCols.has(i)) {
+        html += `<div class="tl-cell tl-month" style="grid-column:${i + 2};grid-row:1;"></div>`;
+      }
+    });
+
+    // Deadline border helper: top row gets top+left+right, middle rows get left+right, bottom row gets bottom+left+right
+    function dlBorder(hl, pos) {
+      if (!hl.isDeadline) return '';
+      const s = '2px dashed #e57373';
+      if (pos === 'top') return `border-top:${s};border-left:${s};border-right:${s};`;
+      if (pos === 'mid') return `border-left:${s};border-right:${s};`;
+      if (pos === 'bot') return `border-bottom:${s};border-left:${s};border-right:${s};`;
+      return '';
+    }
+
+    // ── Date row (row 2) ──
+    html += `<div class="tl-cell tl-date" style="grid-column:1;grid-row:2;"></div>`;
+    columns.forEach((col, i) => {
+      const hl = colHighlights[i];
+      let cls = 'tl-cell tl-date';
+      if (hl.highlight === 'ios') cls += ' highlight-ios';
+      else if (hl.highlight === 'final') cls += ' highlight-final';
+      else if (hl.highlight === 'standby') cls += ' highlight-standby';
+      else if (hl.isDeadline) cls += ' highlight-deadline';
+      if (col.isWeekend) cls += ' tl-weekend';
+
+      const lines = col.dateLabel.split('\n');
+      const display = lines.length > 1
+        ? `<span style="font-size:.65rem;line-height:1.1">${lines.map(esc).join('<br>')}</span>`
+        : esc(col.dateLabel);
+
+      html += `<div class="${cls}" style="grid-column:${i + 2};grid-row:2;${dlBorder(hl,'top')}">${display}</div>`;
+    });
+
+    // ── Day row (row 3) ──
+    html += `<div class="tl-cell tl-day" style="grid-column:1;grid-row:3;"></div>`;
+    columns.forEach((col, i) => {
+      const hl = colHighlights[i];
+      let cls = 'tl-cell tl-day';
+      if (hl.highlight === 'ios') cls += ' highlight-ios';
+      else if (hl.highlight === 'final') cls += ' highlight-final';
+      else if (hl.highlight === 'standby') cls += ' highlight-standby';
+      else if (hl.isDeadline) cls += ' highlight-deadline';
+      if (col.isWeekend) cls += ' tl-weekend';
+
+      const lines = col.dayLabel.split('\n');
+      const display = lines.length > 1
+        ? `<span style="font-size:.6rem;line-height:1.1">${lines.map(esc).join('<br>')}</span>`
+        : esc(col.dayLabel);
+
+      html += `<div class="${cls}" style="grid-column:${i + 2};grid-row:3;${dlBorder(hl,'mid')}">${display}</div>`;
+    });
+
+    // ── Group 1 Row (row 4) ──
+    const g1Height = Math.max(60, g1MaxStack * 22 + 12);
+    html += `<div class="tl-cell tl-row-label" style="grid-column:1;grid-row:4;min-height:${g1Height}px;">${esc(g1Label)}</div>`;
+    columns.forEach((col, i) => {
+      const hl = colHighlights[i];
+      let cls = 'tl-cell';
+      if (col.isWeekend) cls += ' tl-weekend';
+      if (hl.highlight === 'ios') cls += ' tl-col-ios';
+      else if (hl.highlight === 'final') cls += ' tl-col-final';
+      else if (hl.highlight === 'standby') cls += ' tl-col-standby';
+
+      const events = g1Events[i];
+      const addBtn = `<div class="tl-add-btn" data-group="1" data-col="${i}" title="이벤트 추가">+</div>`;
+      let content = '';
+      if (col.isWeekend && events.length === 0) {
+        content = `<span class="tl-holiday-text">휴무</span>`;
+        cls += ' tl-holiday-cell';
+      } else {
+        content = `<div class="tl-event-area" data-group="1" data-col="${i}">`;
+        events.forEach(ev => {
+          const evCls = classifyEvent(ev.text);
+          content += `<div class="tl-event ${evCls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
+        });
+        content += '</div>';
+      }
+
+      html += `<div class="${cls}" style="grid-column:${i + 2};grid-row:4;min-height:${g1Height}px;align-items:flex-start;${dlBorder(hl,'mid')}">${addBtn}${content}</div>`;
+    });
+
+    // ── Group 2 Row (row 5) ──
+    const g2Height = Math.max(80, g2MaxStack * 22 + 12);
+    html += `<div class="tl-cell tl-row-label" style="grid-column:1;grid-row:5;min-height:${g2Height}px;">${esc(g2Label)}</div>`;
+    columns.forEach((col, i) => {
+      const hl = colHighlights[i];
+      let cls = 'tl-cell';
+      if (col.isWeekend) cls += ' tl-weekend';
+      if (hl.highlight === 'ios') cls += ' tl-col-ios';
+      else if (hl.highlight === 'final') cls += ' tl-col-final';
+      else if (hl.highlight === 'standby') cls += ' tl-col-standby';
+
+      const events = g2Events[i];
+      const addBtn2 = `<div class="tl-add-btn" data-group="2" data-col="${i}" title="이벤트 추가">+</div>`;
+      let content = '';
+      if (col.isWeekend && events.length === 0) {
+        content = `<span class="tl-holiday-text">휴무</span>`;
+        cls += ' tl-holiday-cell';
+      } else {
+        content = `<div class="tl-event-area" data-group="2" data-col="${i}">`;
+        events.forEach(ev => {
+          const evCls = classifyEvent(ev.text);
+          content += `<div class="tl-event ${evCls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
+        });
+        content += '</div>';
+      }
+
+      html += `<div class="${cls}" style="grid-column:${i + 2};grid-row:5;min-height:${g2Height}px;align-items:flex-start;${dlBorder(hl,'bot')}">${addBtn2}${content}</div>`;
+    });
+
+    html += '</div>'; // close grid
+
+    $timelineCanvas.innerHTML = html;
+    initDragDrop();
+  }
+
+  /* ── Interactive: Drag, Edit, Toolbar, Add ── */
+  let _dragBound = false;
+  const colorClasses = ['ev-work','ev-build','ev-bvt','ev-deliver','ev-ios','ev-live','ev-data','ev-standby'];
+
+  function initDragDrop() {
+    if (_dragBound) return;
+    _dragBound = true;
+
+    let dragEl = null, isDragging = false;
+    let startX, startY, offsetX, offsetY, ghostEl = null;
+    let selectedEl = null;
+    const $toolbar = $('tlToolbar');
+    const $tbFontSize = $('tbFontSize');
+
+    // ── Select / Deselect ──
+    function selectEvent(ev) {
+      deselectEvent();
+      selectedEl = ev;
+      ev.classList.add('selected');
+      // Show toolbar near element
+      const rect = ev.getBoundingClientRect();
+      $toolbar.style.left = Math.max(4, rect.left) + 'px';
+      $toolbar.style.top = Math.max(4, rect.top - 38) + 'px';
+      $toolbar.classList.add('show');
+      // Sync toolbar state
+      const fs = parseInt(ev.style.fontSize) || 11;
+      $tbFontSize.value = fs;
+      // Highlight active color
+      $toolbar.querySelectorAll('.tl-color-opt').forEach(opt => {
+        opt.classList.toggle('active', ev.classList.contains(opt.dataset.cls));
+      });
+    }
+    function deselectEvent() {
+      if (selectedEl) {
+        selectedEl.classList.remove('selected');
+        if (selectedEl.classList.contains('editing')) {
+          selectedEl.contentEditable = 'false';
+          selectedEl.classList.remove('editing');
+          selectedEl.style.cursor = '';
+        }
+        selectedEl = null;
+      }
+      $toolbar.classList.remove('show');
+    }
+
+    // ── Toolbar: font size ──
+    $tbFontSize.addEventListener('change', () => {
+      if (!selectedEl) return;
+      selectedEl.style.fontSize = $tbFontSize.value + 'px';
+    });
+
+    // ── Toolbar: color ──
+    $toolbar.addEventListener('click', e => {
+      const opt = e.target.closest('.tl-color-opt');
+      if (opt && selectedEl) {
+        colorClasses.forEach(c => selectedEl.classList.remove(c));
+        selectedEl.classList.add(opt.dataset.cls);
+        $toolbar.querySelectorAll('.tl-color-opt').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        return;
+      }
+      // Delete button
+      if (e.target.id === 'tbDelete' && selectedEl) {
+        selectedEl.remove();
+        deselectEvent();
+      }
+    });
+
+    // ── Click to select, click away to deselect ──
+    document.addEventListener('mousedown', e => {
+      // Add button click
+      if (e.target.classList.contains('tl-add-btn')) return;
+      const ev = e.target.closest('.tl-event');
+      if (!ev) {
+        if (!e.target.closest('.tl-toolbar')) deselectEvent();
+        return;
+      }
+      if (ev.classList.contains('editing')) return;
+
+      // Start potential drag
+      startX = e.clientX; startY = e.clientY;
+      const rect = ev.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      dragEl = ev;
+      isDragging = false;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragEl) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!isDragging) {
+        if (Math.abs(dx) + Math.abs(dy) < 5) return;
+        isDragging = true;
+        deselectEvent();
+        ghostEl = dragEl.cloneNode(true);
+        ghostEl.classList.add('drag-placeholder');
+        dragEl.parentNode.insertBefore(ghostEl, dragEl);
+        const w = dragEl.offsetWidth;
+        Object.assign(dragEl.style, {
+          position:'fixed', zIndex:'10000', width:w+'px',
+          pointerEvents:'none', boxShadow:'0 4px 12px rgba(0,0,0,.25)',
+          transform:'scale(1.08)', opacity:'0.92'
+        });
+        document.body.appendChild(dragEl);
+      }
+      dragEl.style.left = (e.clientX - offsetX) + 'px';
+      dragEl.style.top = (e.clientY - offsetY) + 'px';
+      $timelineCanvas.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (under) {
+        const area = under.closest('.tl-event-area');
+        if (area) area.classList.add('drag-over');
+      }
+    });
+
+    document.addEventListener('mouseup', e => {
+      if (!dragEl) return;
+      if (isDragging) {
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const area = under ? under.closest('.tl-event-area') : null;
+        Object.assign(dragEl.style, {
+          position:'', zIndex:'', width:'', pointerEvents:'',
+          boxShadow:'', transform:'', opacity:'', left:'', top:''
+        });
+        if (area) area.appendChild(dragEl);
+        else if (ghostEl && ghostEl.parentNode) ghostEl.parentNode.insertBefore(dragEl, ghostEl);
+        if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+        $timelineCanvas.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      } else if (dragEl) {
+        // Click without drag → select
+        selectEvent(dragEl);
+      }
+      isDragging = false;
+      dragEl = null;
+    });
+
+    // ── Double-click to edit text ──
+    $timelineCanvas.addEventListener('dblclick', e => {
+      const ev = e.target.closest('.tl-event');
+      if (!ev) return;
+      selectEvent(ev);
+      ev.contentEditable = 'true';
+      ev.classList.add('editing');
+      ev.style.cursor = 'text';
+      ev.focus();
+      const range = document.createRange();
+      range.selectNodeContents(ev);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+
+    $timelineCanvas.addEventListener('focusout', e => {
+      const ev = e.target.closest('.tl-event');
+      if (ev && ev.classList.contains('editing')) {
+        ev.contentEditable = 'false';
+        ev.classList.remove('editing');
+        ev.style.cursor = '';
+      }
+    });
+
+    // ── + Button: Add new event ──
+    $timelineCanvas.addEventListener('click', e => {
+      if (!e.target.classList.contains('tl-add-btn')) return;
+      const btn = e.target;
+      const group = btn.dataset.group;
+      const area = btn.parentElement.querySelector('.tl-event-area');
+      if (!area) return;
+
+      const newEv = document.createElement('div');
+      newEv.className = 'tl-event ev-work';
+      newEv.innerHTML = '새 항목';
+      area.appendChild(newEv);
+
+      // Auto select & edit
+      selectEvent(newEv);
+      newEv.contentEditable = 'true';
+      newEv.classList.add('editing');
+      newEv.style.cursor = 'text';
+      newEv.focus();
+      const range = document.createRange();
+      range.selectNodeContents(newEv);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+
+  }
+
+  /* ── Build events per column for a group ── */
+  function buildGroupEvents(groupRows, columns) {
+    // For each column, collect all events from all rows in the group
+    return columns.map(col => {
+      const events = [];
+      groupRows.forEach(row => {
+        row.events.forEach(ev => {
+          if (col.cols.includes(ev.col)) {
+            events.push(ev);
+          }
+        });
+      });
+      return events;
+    });
+  }
+
+  /* ── PNG Download (shared) ── */
+  function downloadPNG() { _downloadPNG($timelineCanvas, $inputTitle, goStep); }
+
+  function _downloadPNG(el, titleInput, stepFn) {
+    // Hide UI elements for clean capture
+    const toolbar = $('tlToolbar');
+    toolbar.classList.remove('show');
+    el.querySelectorAll('.selected').forEach(e => e.classList.remove('selected'));
+    const addBtns = el.querySelectorAll('.tl-add-btn');
+    addBtns.forEach(b => b.style.display = 'none');
+
+    const wrap = el.closest('.timeline-wrap') || el.parentElement;
+    const origWrapOverflow = wrap.style.overflow;
+    const origWrapMaxW = wrap.style.maxWidth;
+    wrap.style.overflow = 'visible';
+    wrap.style.maxWidth = 'none';
+    const origElMinW = el.style.minWidth;
+    const origElW = el.style.width;
+    const fullW = el.scrollWidth;
+    el.style.minWidth = fullW + 'px';
+    el.style.width = fullW + 'px';
+
+    html2canvas(el, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      width: el.scrollWidth,
+      height: el.scrollHeight,
+      windowWidth: el.scrollWidth + 100
+    }).then(canvas => {
+      wrap.style.overflow = origWrapOverflow;
+      wrap.style.maxWidth = origWrapMaxW;
+      el.style.minWidth = origElMinW;
+      el.style.width = origElW;
+
+      const link = document.createElement('a');
+      link.download = ((titleInput.value || 'timeline') + '').replace(/[/\\?%*:|"<>]/g, '_') + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      stepFn(3);
+      showToast('PNG 파일이 다운로드되었습니다!');
+      addBtns.forEach(b => b.style.display = '');
+    }).catch(err => {
+      wrap.style.overflow = origWrapOverflow;
+      wrap.style.maxWidth = origWrapMaxW;
+      el.style.minWidth = origElMinW;
+      el.style.width = origElW;
+      showToast('PNG 생성 실패: ' + err.message, 'error');
+      addBtns.forEach(b => b.style.display = '');
+    });
+  }
+
+  /* ── Utility ── */
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ══════════════════════════════════════════════════
+     MODE TAB SWITCHING
+     ══════════════════════════════════════════════════ */
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('show'));
+      tab.classList.add('active');
+      $(tab.dataset.mode + 'Mode').classList.add('show');
+    });
+  });
+
+  /* ══════════════════════════════════════════════════
+     DATA UPDATE MODE
+     ══════════════════════════════════════════════════ */
+  const DAY_NAMES = ['일','월','화','수','목','금','토'];
+
+  // DOM refs
+  const $dataUpdateDate = $('dataUpdateDate');
+  const $dataTitle = $('dataTitle');
+  const $dataDateInfo = $('dataDateInfo');
+  const $dataSchedulePanel = $('dataSchedulePanel');
+  const $dataTimelineCanvas = $('dataTimelineCanvas');
+  const $dataInputTitle = $('dataInputTitle');
+  const $dSec1 = $('dSec1'), $dSec2 = $('dSec2'), $dSec3 = $('dSec3');
+  const $dStep1 = $('dStep1'), $dStep2 = $('dStep2'), $dStep3 = $('dStep3');
+
+  let dataHolidays = [];
+  let customHolidays = [];
+  const $dataWeekMode = $('dataWeekMode');
+
+  // Schedule defaults: {day, week} — week: 1=first week, 2=second week (closest to update)
+  const SCHED_DEFAULTS = {
+    1: { // 1주 mode
+      rows: [
+        { id:'r1', label:'1차', deadline:{day:3,week:1}, delivery:{day:4,week:1}, test:{day:4,week:1} },
+        { id:'r2', label:'2차', deadline:{day:4,week:1}, delivery:{day:5,week:1}, test:{day:5,week:1} },
+        { id:'final', label:'최종', deadline:{day:1,week:1}, delivery:{day:1,week:1}, test:{day:1,week:1} },
+      ]
+    },
+    2: { // 2주 mode
+      rows: [
+        { id:'r1', label:'1차', deadline:{day:3,week:1}, delivery:{day:4,week:1}, test:{day:4,week:1} },
+        { id:'r2', label:'2차', deadline:{day:4,week:1}, delivery:{day:5,week:1}, test:{day:5,week:1} },
+        { id:'r3', label:'3차', deadline:{day:5,week:1}, delivery:{day:1,week:1}, test:{day:1,week:1} },
+        { id:'final', label:'최종', deadline:{day:1,week:2}, delivery:{day:1,week:2}, test:{day:1,week:2} },
+      ]
+    }
+  };
+
+  function dataGoStep(n) {
+    [$dSec1,$dSec2,$dSec3].forEach(s => s.classList.remove('show'));
+    [$dStep1,$dStep2,$dStep3].forEach(s => { s.classList.remove('active','done'); });
+    if (n >= 1) { $dSec1.classList.toggle('show', n===1); $dStep1.classList.add(n===1?'active':'done'); }
+    if (n >= 2) { $dSec2.classList.toggle('show', n===2); $dStep2.classList.add(n===2?'active':'done'); }
+    if (n >= 3) { $dSec3.classList.toggle('show', n===3); $dStep3.classList.add(n===3?'active':'done'); }
+  }
+
+  // Build schedule table dynamically
+  function buildScheduleTable() {
+    const mode = parseInt($dataWeekMode.value);
+    const defs = SCHED_DEFAULTS[mode];
+    const showWeek = (mode === 2);
+    const dayOpts = v => [1,2,3,4,5].map(d => `<option value="${d}"${d===v?' selected':''}>${DAY_NAMES[d]}</option>`).join('');
+    const weekOpts = v => [1,2].map(w => `<option value="${w}"${w===v?' selected':''}>${w}주차</option>`).join('');
+
+    let html = '<table class="schedule-table"><thead><tr><th></th><th>데이터 마감</th><th>데이터 납품</th><th>빌드 테스트</th></tr></thead><tbody>';
+
+    defs.rows.forEach(row => {
+      html += `<tr><td class="row-label">${row.label}</td>`;
+      ['deadline','delivery','test'].forEach(f => {
+        html += '<td>';
+        if (showWeek) {
+          html += `<select id="dw_${row.id}_${f}" style="font-size:.7rem;padding:2px 4px;margin-bottom:4px;">${weekOpts(row[f].week)}</select><br>`;
+        }
+        html += `<select id="ds_${row.id}_${f}">${dayOpts(row[f].day)}</select>`;
+        html += `<div class="date-preview" id="dp_${row.id}_${f}"></div></td>`;
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    $('scheduleTableWrap').innerHTML = html;
+
+    // Bind change events for date previews
+    $('scheduleTableWrap').querySelectorAll('select').forEach(sel => {
+      sel.addEventListener('change', updateDatePreviews);
+    });
+    updateDatePreviews();
+  }
+
+  // Set default date to today
+  { const today = new Date(); $dataUpdateDate.value = today.toISOString().slice(0,10); }
+
+  // Date/mode change
+  function onDataSettingsChange() {
+    const dateStr = $dataUpdateDate.value;
+    if (!dateStr) { $dataSchedulePanel.style.display = 'none'; $dataDateInfo.style.display = 'none'; return; }
+    const d = new Date(dateStr + 'T00:00:00');
+    const dayName = DAY_NAMES[d.getDay()];
+    $dataDateInfo.style.display = 'block';
+    $dataDateInfo.innerHTML = `<span style="color:#4ade80">선택: ${d.getMonth()+1}/${d.getDate()} (${dayName})</span>`;
+    $dataSchedulePanel.style.display = '';
+    $dataTitle.value = `${d.getMonth()+1}/${d.getDate()} 정기 업데이트 타임 라인`;
+    buildScheduleTable();
+    fetchHolidays(d.getFullYear());
+  }
+
+  $dataUpdateDate.addEventListener('change', onDataSettingsChange);
+  $dataWeekMode.addEventListener('change', onDataSettingsChange);
+  $dataUpdateDate.dispatchEvent(new Event('change'));
+
+  // Custom holiday management
+  $('btnAddHoliday').addEventListener('click', () => {
+    const dateVal = $('customHolidayDate').value;
+    const nameVal = $('customHolidayName').value.trim() || '휴일';
+    if (!dateVal) { showToast('휴일 날짜를 선택하세요', 'error'); return; }
+    if (customHolidays.some(h => h.date === dateVal)) { showToast('이미 추가된 날짜입니다', 'error'); return; }
+    customHolidays.push({ date: dateVal, localName: nameVal });
+    $('customHolidayDate').value = '';
+    $('customHolidayName').value = '';
+    renderCustomHolidays();
+    showHolidaysInRange();
+    showToast(`${nameVal} 추가됨`);
+  });
+
+  function renderCustomHolidays() {
+    const list = $('customHolidayList');
+    if (customHolidays.length === 0) { list.innerHTML = ''; return; }
+    list.innerHTML = customHolidays.map((h, i) => {
+      const hd = new Date(h.date + 'T00:00:00');
+      return `<div class="holiday-item"><span>${hd.getMonth()+1}/${hd.getDate()} (${DAY_NAMES[hd.getDay()]}) - ${h.localName}</span><button onclick="removeCustomHoliday(${i})" style="background:#5a2d2d;color:#f87171;border:none;border-radius:4px;padding:2px 8px;font-size:.72rem;cursor:pointer;">삭제</button></div>`;
+    }).join('');
+  }
+
+  window.removeCustomHoliday = function(idx) {
+    customHolidays.splice(idx, 1);
+    renderCustomHolidays();
+    showHolidaysInRange();
+  };
+
+  function updateDatePreviews() {
+    const dateStr = $dataUpdateDate.value;
+    if (!dateStr) return;
+    const updateDate = new Date(dateStr + 'T00:00:00');
+    const mode = parseInt($dataWeekMode.value);
+    const defs = SCHED_DEFAULTS[mode];
+    defs.rows.forEach(row => {
+      ['deadline','delivery','test'].forEach(f => {
+        const dayEl = $(`ds_${row.id}_${f}`);
+        const weekEl = $(`dw_${row.id}_${f}`);
+        if (!dayEl) return;
+        const dayVal = parseInt(dayEl.value);
+        const weekVal = weekEl ? parseInt(weekEl.value) : 1;
+        const actualDate = dayOfWeekToDate(updateDate, dayVal, weekVal, mode);
+        const preview = $(`dp_${row.id}_${f}`);
+        if (preview) preview.textContent = `${actualDate.getMonth()+1}/${actualDate.getDate()} (${DAY_NAMES[actualDate.getDay()]})`;
+      });
+    });
+  }
+
+  // Convert day-of-week + week number to actual date
+  // weekNum: which week (1=first, 2=second closest to update)
+  // totalWeeks: 1 or 2
+  function dayOfWeekToDate(updateDate, targetDay, weekNum, totalWeeks) {
+    const weeksBack = totalWeeks - weekNum;
+    const refDate = new Date(updateDate);
+    refDate.setDate(refDate.getDate() - (weeksBack * 7));
+    const diff = (refDate.getDay() - targetDay + 7) % 7;
+    if (diff === 0) return new Date(refDate);
+    refDate.setDate(refDate.getDate() - diff);
+    return refDate;
+  }
+
+  // Fetch holidays
+  async function fetchHolidays(year) {
+    try {
+      const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/KR`);
+      if (!res.ok) throw new Error('API error');
+      dataHolidays = await res.json();
+    } catch(e) {
+      // Fallback hardcoded holidays
+      dataHolidays = getFallbackHolidays(year);
+    }
+    showHolidaysInRange();
+  }
+
+  function getFallbackHolidays(year) {
+    const holidays = {
+      2025: [
+        {date:'2025-01-01',localName:'새해'},
+        {date:'2025-01-28',localName:'설날 연휴'},{date:'2025-01-29',localName:'설날'},{date:'2025-01-30',localName:'설날 연휴'},
+        {date:'2025-03-01',localName:'삼일절'},
+        {date:'2025-05-05',localName:'어린이날'},{date:'2025-05-06',localName:'대체휴일(어린이날)'},
+        {date:'2025-06-06',localName:'현충일'},
+        {date:'2025-08-15',localName:'광복절'},
+        {date:'2025-10-03',localName:'개천절'},{date:'2025-10-06',localName:'대체휴일(추석)'},{date:'2025-10-07',localName:'추석 연휴'},{date:'2025-10-08',localName:'추석'},{date:'2025-10-09',localName:'한글날'},
+        {date:'2025-12-25',localName:'크리스마스'}
+      ],
+      2026: [
+        {date:'2026-01-01',localName:'새해'},
+        {date:'2026-02-16',localName:'설날 연휴'},{date:'2026-02-17',localName:'설날'},{date:'2026-02-18',localName:'설날 연휴'},
+        {date:'2026-03-01',localName:'삼일절'},{date:'2026-03-02',localName:'대체휴일(삼일절)'},
+        {date:'2026-05-05',localName:'어린이날'},
+        {date:'2026-05-24',localName:'부처님오신날'},{date:'2026-05-25',localName:'대체휴일(부처님오신날)'},
+        {date:'2026-06-06',localName:'현충일'},
+        {date:'2026-08-15',localName:'광복절'},{date:'2026-08-17',localName:'대체휴일(광복절)'},
+        {date:'2026-09-24',localName:'추석 연휴'},{date:'2026-09-25',localName:'추석'},{date:'2026-09-26',localName:'추석 연휴'},
+        {date:'2026-10-03',localName:'개천절'},{date:'2026-10-05',localName:'대체휴일(개천절)'},
+        {date:'2026-10-09',localName:'한글날'},
+        {date:'2026-12-25',localName:'크리스마스'}
+      ],
+      2027: [
+        {date:'2027-01-01',localName:'새해'},
+        {date:'2027-02-06',localName:'설날 연휴'},{date:'2027-02-07',localName:'설날'},{date:'2027-02-08',localName:'설날 연휴'},{date:'2027-02-09',localName:'대체휴일(설날)'},
+        {date:'2027-03-01',localName:'삼일절'},
+        {date:'2027-05-05',localName:'어린이날'},
+        {date:'2027-05-13',localName:'부처님오신날'},
+        {date:'2027-06-06',localName:'현충일'},{date:'2027-06-07',localName:'대체휴일(현충일)'},
+        {date:'2027-08-15',localName:'광복절'},{date:'2027-08-16',localName:'대체휴일(광복절)'},
+        {date:'2027-09-14',localName:'추석 연휴'},{date:'2027-09-15',localName:'추석'},{date:'2027-09-16',localName:'추석 연휴'},
+        {date:'2027-10-03',localName:'개천절'},{date:'2027-10-04',localName:'대체휴일(개천절)'},
+        {date:'2027-10-09',localName:'한글날'},{date:'2027-10-11',localName:'대체휴일(한글날)'},
+        {date:'2027-12-25',localName:'크리스마스'}
+      ]
+    };
+    return holidays[year] || [];
+  }
+
+  // Merge API holidays + custom holidays (deduplicated)
+  function getAllHolidays() {
+    const merged = [...dataHolidays];
+    customHolidays.forEach(ch => {
+      if (!merged.some(h => h.date === ch.date)) merged.push(ch);
+    });
+    return merged;
+  }
+
+  function showHolidaysInRange() {
+    const dateStr = $dataUpdateDate.value;
+    if (!dateStr) return;
+    const mode = parseInt($dataWeekMode.value);
+    const updateDate = new Date(dateStr + 'T00:00:00');
+    const startDate = new Date(updateDate);
+    startDate.setDate(startDate.getDate() - (mode * 7));
+
+    const all = getAllHolidays();
+    const inRange = all.filter(h => {
+      const hd = new Date(h.date + 'T00:00:00');
+      return hd >= startDate && hd <= updateDate && hd.getDay() >= 1 && hd.getDay() <= 5;
+    });
+
+    const area = $('holidayArea');
+    const list = $('holidayList');
+    if (inRange.length === 0) {
+      area.style.display = 'none';
+      return;
+    }
+    area.style.display = '';
+    list.innerHTML = inRange.map(h => {
+      const hd = new Date(h.date + 'T00:00:00');
+      const isCustom = customHolidays.some(ch => ch.date === h.date);
+      return `<div class="holiday-item"><span>${hd.getMonth()+1}/${hd.getDate()} (${DAY_NAMES[hd.getDay()]}) - ${h.localName || h.name}</span><span class="holiday-badge">${isCustom ? '추가 휴일' : '공휴일'}</span></div>`;
+    }).join('');
+  }
+
+  // Generate data timeline
+  $('btnDataGenerate').addEventListener('click', generateDataTimeline);
+  $('btnDataBack').addEventListener('click', () => dataGoStep(1));
+  $('btnDataRefresh').addEventListener('click', renderDataTimeline);
+  $('btnDataRestart').addEventListener('click', () => dataGoStep(1));
+  $('btnDataDownload').addEventListener('click', () => _downloadPNG($dataTimelineCanvas, $dataInputTitle, dataGoStep));
+  $('btnDataRedownload').addEventListener('click', () => _downloadPNG($dataTimelineCanvas, $dataInputTitle, dataGoStep));
+
+  let dataTimelineData = null;
+
+  function generateDataTimeline() {
+    const dateStr = $dataUpdateDate.value;
+    if (!dateStr) { showToast('업데이트 날짜를 선택하세요', 'error'); return; }
+
+    const updateDate = new Date(dateStr + 'T00:00:00');
+    const mode = parseInt($dataWeekMode.value);
+    const defs = SCHED_DEFAULTS[mode];
+
+    // Read schedule from UI
+    const schedule = [];
+    defs.rows.forEach(row => {
+      const entry = { id: row.id, label: row.label };
+      ['deadline','delivery','test'].forEach(f => {
+        const dayEl = $(`ds_${row.id}_${f}`);
+        const weekEl = $(`dw_${row.id}_${f}`);
+        entry[f] = { day: parseInt(dayEl.value), week: weekEl ? parseInt(weekEl.value) : 1 };
+      });
+      schedule.push(entry);
+    });
+
+    // Build columns: from (updateDate - mode*7 + 1) to updateDate (skip first day = same weekday as update)
+    const columns = [];
+    const startDate = new Date(updateDate);
+    startDate.setDate(startDate.getDate() - (mode * 7) + 1);
+
+    const holidaySet = {};
+    getAllHolidays().forEach(h => { holidaySet[h.date] = h.localName || h.name; });
+
+    let d = new Date(startDate);
+    while (d <= updateDate) {
+      const dow = d.getDay();
+      const dateKey = d.toISOString().slice(0,10);
+      if (dow === 6) {
+        const sun = new Date(d); sun.setDate(sun.getDate() + 1);
+        columns.push({ type:'weekend', dates:[new Date(d),sun], label:`${d.getDate()}~\n${sun.getDate()}`, isWeekend:true, isHoliday:false, holidayName:'' });
+        d.setDate(d.getDate() + 2); continue;
+      }
+      if (dow === 0) { d.setDate(d.getDate() + 1); continue; }
+      const isHoliday = !!holidaySet[dateKey];
+      columns.push({ type:'weekday', dates:[new Date(d)], label:`${d.getMonth()+1}/${d.getDate()}\n${DAY_NAMES[dow]}`, dayName:DAY_NAMES[dow], dateNum:d.getDate(), month:d.getMonth()+1, isWeekend:false, isHoliday, holidayName:isHoliday?holidaySet[dateKey]:'', dateKey });
+      d.setDate(d.getDate() + 1);
+    }
+
+    // Map schedule entry to column index
+    function findColIdx(entry) {
+      const targetDate = dayOfWeekToDate(updateDate, entry.day, entry.week, mode);
+      const key = targetDate.toISOString().slice(0,10);
+      return columns.findIndex(c => c.dates.some(cd => cd.toISOString().slice(0,10) === key));
+    }
+    const updateColIdx = columns.length - 1;
+
+    // Build events for each group
+    const pm_am = [], pm_pm = [], gd_am = [], gd_pm = [], qa_am = [], qa_pm = [];
+
+    schedule.forEach(row => {
+      const isFinal = (row.id === 'final');
+      const label = row.label;
+      const nTag = isFinal ? '최종 데이터\n납품' : `${label}\n데이터 납품`;
+      const dTag = isFinal ? '최종\n데이터 마감' : `${label}\n데이터 마감`;
+      const tTag = isFinal ? '최종 빌드\n테스트 완료' : `${label} 빌드\n테스트`;
+
+      const delivIdx = findColIdx(row.delivery);
+      const deadIdx = findColIdx(row.deadline);
+      const testIdx = findColIdx(row.test);
+
+      if (delivIdx >= 0) pm_am.push({ col:delivIdx, text:nTag, cls:'dt-delivery' + (isFinal?' dt-final-delivery':'') });
+      if (deadIdx >= 0) gd_pm.push({ col:deadIdx, text:dTag, cls:'dt-deadline' + (isFinal?' dt-final-deadline':'') });
+      if (testIdx >= 0) qa_pm.push({ col:testIdx, text:tTag, cls:'dt-test' + (isFinal?' dt-final-test':'') });
+    });
+
+    // Deadline columns (최종 + 업데이트 당일)
+    const deadlineCols = new Set();
+    const finalRow = schedule.find(r => r.id === 'final');
+    if (finalRow) {
+      [findColIdx(finalRow.deadline), findColIdx(finalRow.delivery), findColIdx(finalRow.test)].forEach(i => { if (i >= 0) deadlineCols.add(i); });
+    }
+    deadlineCols.add(updateColIdx);
+
+    const updateDateStr = `${updateDate.getMonth()+1}/${updateDate.getDate()}`;
+
+    // Span events for 2주 mode (추가 납품 / 추가 테스트)
+    const spanEvents = [];
+    if (mode === 2) {
+      const r3Row = schedule.find(r => r.id === 'r3');
+      if (r3Row && finalRow) {
+        const r3DelivIdx = findColIdx(r3Row.delivery);
+        const finalDelivIdx = findColIdx(finalRow.delivery);
+        if (r3DelivIdx >= 0 && finalDelivIdx >= 0) {
+          const spanCols = [];
+          for (let ci = r3DelivIdx + 1; ci < finalDelivIdx; ci++) {
+            if (!columns[ci].isWeekend && ci !== updateColIdx) spanCols.push(ci);
+          }
+          if (spanCols.length > 0) {
+            spanEvents.push({ rowNum:2, colStart:spanCols[0], colEnd:spanCols[spanCols.length-1], text:'(상황에 따라 추가 납품)', cls:'dt-delivery' });
+            spanEvents.push({ rowNum:7, colStart:spanCols[0], colEnd:spanCols[spanCols.length-1], text:'추가 납품 빌드에 대한 테스트', cls:'dt-test' });
+          }
+        }
+      }
+    }
+
+    dataTimelineData = {
+      columns,
+      groups: [
+        { name:'PM', rows:[{ label:'오전', events:pm_am },{ label:'오후', events:pm_pm }] },
+        { name:'게임디자인실', rows:[{ label:'오전', events:gd_am },{ label:'오후', events:gd_pm }] },
+        { name:'QA', rows:[{ label:'오전', events:qa_am },{ label:'오후', events:qa_pm }] }
+      ],
+      deadlineCols, updateColIdx, updateDateStr, spanEvents,
+      title: $dataTitle.value || `${updateDateStr} 정기 업데이트 타임 라인`
+    };
+
+    $dataInputTitle.value = dataTimelineData.title;
+    renderDataTimeline();
+    dataGoStep(2);
+  }
+
+  function renderDataTimeline() {
+    if (!dataTimelineData) return;
+    const { columns, groups, deadlineCols, updateColIdx, updateDateStr } = dataTimelineData;
+    const spanEvents = dataTimelineData.spanEvents || [];
+
+    // Update title from input
+    const title = $dataInputTitle.value || dataTimelineData.title;
+
+    const numCols = columns.length;
+    // Grid: col1=group label, col2=time label, col3..col(2+numCols)=data cols
+    // Rows: row1=header, row2..row7=3 groups x 2 rows
+
+    // Column widths
+    const colWidths = columns.map(c => c.isWeekend ? '42px' : '80px').join(' ');
+    let html = `<div class="tl-title-row">
+      <div class="tl-title">${esc(title)}</div>
+      <div class="tl-legend">
+        <div class="tl-legend-item"><div class="tl-legend-box deadline"></div><span>대기 필요 날짜</span></div>
+      </div>
+    </div>`;
+
+    html += `<div class="tl-grid" style="grid-template-columns:90px 50px ${colWidths};">`;
+
+    // Row 1: Header
+    html += `<div class="tl-cell dt-header" style="grid-column:1/3;grid-row:1;"></div>`;
+    columns.forEach((col, i) => {
+      let cls = 'tl-cell dt-header';
+      let style = `grid-column:${i+3};grid-row:1;text-align:center;`;
+      if (col.isWeekend) cls += ' tl-weekend';
+      if (col.isHoliday) style += 'background:#FFCDD2;color:#C62828;';
+      if (i === updateColIdx) style += 'background:#F8BBD0;color:#C62828;font-weight:700;';
+
+      const dlBdr = deadlineCols.has(i) ? 'border-top:2px dashed #e57373;border-left:2px dashed #e57373;border-right:2px dashed #e57373;' : '';
+      style += dlBdr;
+
+      if (col.isWeekend) {
+        html += `<div class="${cls}" style="${style}">${esc(col.label)}</div>`;
+      } else {
+        const parts = col.label.split('\n');
+        html += `<div class="${cls}" style="${style};flex-direction:column;line-height:1.3;"><span style="font-size:.72rem;font-weight:600;">${esc(parts[0])}</span><span style="font-size:.78rem;font-weight:700;">${esc(parts[1] || '')}</span></div>`;
+      }
+    });
+
+    // Weekend merged cells (span all 6 data rows: row 2~7)
+    columns.forEach((col, ci) => {
+      if (col.isWeekend) {
+        html += `<div class="tl-cell tl-weekend" style="grid-column:${ci+3};grid-row:2/8;align-items:center;justify-content:center;"><span class="tl-holiday-text" style="font-size:.85rem;">휴무</span></div>`;
+      }
+    });
+
+    // Update day merged cell (span all 6 data rows: row 2~7)
+    if (updateColIdx >= 0) {
+      const ci = updateColIdx;
+      let dlStyle = '';
+      if (deadlineCols.has(ci)) {
+        const dlS = '2px dashed #e57373';
+        dlStyle = `border:${dlS};`;
+      }
+      html += `<div class="tl-cell" style="grid-column:${ci+3};grid-row:2/8;align-items:center;justify-content:center;background:#EDE7F6;${dlStyle}"><div class="dt-event dt-update" style="padding:8px 4px;font-size:.78rem;">${updateDateStr}<br>정기 업데이트</div></div>`;
+    }
+
+    // Rows 2-7: 3 groups x 2 sub-rows
+    groups.forEach((group, gi) => {
+      const row1 = gi * 2 + 2;
+      const row2 = gi * 2 + 3;
+
+      // Group label (spans 2 rows)
+      html += `<div class="tl-cell dt-group-label" style="grid-column:1;grid-row:${row1}/${row2+1};">${esc(group.name)}</div>`;
+
+      group.rows.forEach((subRow, ri) => {
+        const rowNum = gi * 2 + 2 + ri;
+
+        // Time label
+        html += `<div class="tl-cell dt-time-label" style="grid-column:2;grid-row:${rowNum};">${esc(subRow.label)}</div>`;
+
+        // Data cells (skip weekends & update col - already merged above)
+        columns.forEach((col, ci) => {
+          if (col.isWeekend) return;
+          if (ci === updateColIdx) return;
+
+          // Check for span events covering this cell
+          const span = spanEvents.find(se => se.rowNum === rowNum && ci >= se.colStart && ci <= se.colEnd);
+          if (span) {
+            if (ci === span.colStart) {
+              const gcEnd = span.colEnd + 3 + 1;
+              html += `<div class="tl-cell" style="grid-column:${ci+3}/${gcEnd};grid-row:${rowNum};min-height:50px;align-items:center;justify-content:center;"><div class="dt-event ${span.cls}" style="width:100%;text-align:center;padding:8px 6px;">${esc(span.text)}</div></div>`;
+            }
+            return;
+          }
+
+          let cls = 'tl-cell';
+          let style = `grid-column:${ci+3};grid-row:${rowNum};min-height:50px;align-items:center;`;
+
+          if (col.isHoliday) style += 'background:#FFF3E0;';
+
+          // Deadline border
+          if (deadlineCols.has(ci)) {
+            const dlS = '2px dashed #e57373';
+            style += `border-left:${dlS};border-right:${dlS};`;
+            if (rowNum === 7) style += `border-bottom:${dlS};`;
+          }
+
+          const ev = subRow.events.find(e => e.col === ci);
+
+          let content = '';
+          if (col.isHoliday && !ev) {
+            content = `<span style="font-size:.65rem;color:#e57373;">공휴일</span>`;
+          }
+
+          if (ev) {
+            content = `<div class="dt-event ${ev.cls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
+          }
+
+          html += `<div class="${cls}" style="${style}">${content}</div>`;
+        });
+      });
+    });
+
+    html += '</div>';
+    $dataTimelineCanvas.innerHTML = html;
+  }
+
+})();
+</script>
+</body>
+</html>
