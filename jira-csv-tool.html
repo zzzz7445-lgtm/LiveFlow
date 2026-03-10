@@ -2403,19 +2403,26 @@ async function jiraFetchPost(path, body) {
  * Build Jira issue field object.
  * @param {object} opts - { projectKey, issueType, summary, description, assignee, priority, fixVersion, parent }
  */
+/** Convert plain text to Jira ADF (Atlassian Document Format) */
+function textToAdf(text) {
+  if (!text || !text.trim()) text = '-';
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  return {
+    type: 'doc',
+    version: 1,
+    content: lines.map(line => {
+      if (!line.trim()) return { type: 'paragraph', content: [] };
+      return { type: 'paragraph', content: [{ type: 'text', text: line }] };
+    })
+  };
+}
+
 function buildIssueFields(opts) {
   const fields = {
     project: { key: opts.projectKey },
     issuetype: { name: opts.issueType },
     summary: opts.summary,
-    description: {
-      type: 'doc',
-      version: 1,
-      content: [{
-        type: 'paragraph',
-        content: [{ type: 'text', text: opts.description || '' }]
-      }]
-    }
+    description: textToAdf(opts.description)
   };
   if (opts.assignee) fields.assignee = { accountId: opts.assignee };
   if (opts.priority) fields.priority = { name: opts.priority };
@@ -2487,7 +2494,23 @@ async function submitToJira(issuePayloads, resultElId, btn) {
           })
         };
       } else {
-        result = await jiraFetchPost('/rest/api/3/issue/bulk', { issueUpdates: batch });
+        console.log('[Jira] Sending batch payload:', JSON.stringify({ issueUpdates: batch }, null, 2));
+        try {
+          result = await jiraFetchPost('/rest/api/3/issue/bulk', { issueUpdates: batch });
+        } catch (bulkErr) {
+          // Bulk API failed — fallback to individual issue creation
+          console.warn('[Jira] Bulk API failed, falling back to individual creation:', bulkErr.message);
+          result = { issues: [], errors: [] };
+          for (let ii = 0; ii < batch.length; ii++) {
+            try {
+              const single = await jiraFetchPost('/rest/api/3/issue', batch[ii]);
+              result.issues.push(single);
+            } catch (singleErr) {
+              console.error(`[Jira] Issue #${ii + 1} failed:`, singleErr.message, '\nPayload:', JSON.stringify(batch[ii], null, 2));
+              result.errors.push({ message: `[${batch[ii].fields?.summary || 'unknown'}] ${singleErr.message}` });
+            }
+          }
+        }
       }
 
       if (result.issues) {
@@ -2504,6 +2527,7 @@ async function submitToJira(issuePayloads, resultElId, btn) {
       }
     } catch (e) {
       totalErrors += batch.length;
+      console.error('[Jira] Error:', e.message);
       errors.push({ message: e.message, count: batch.length });
     }
 
