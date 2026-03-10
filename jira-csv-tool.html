@@ -255,7 +255,7 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
             <option value="custom">커스텀 프록시 URL</option>
           </select>
           <input type="text" id="corsCustomUrl" class="hidden mt-8" placeholder="https://your-cors-proxy.example.com/">
-          <span class="hint">Jira Cloud는 브라우저 CORS를 차단합니다. 로컬 프록시 실행: <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">npx local-cors-proxy --proxyUrl https://DOMAIN.atlassian.net --port 8080</code></span>
+          <span class="hint">Jira Cloud는 브라우저 CORS를 차단합니다. 아래 프록시 실행 파일을 다운로드하여 실행하세요.</span>
         </div>
       </div>
       <div class="btn-group mt-12">
@@ -282,10 +282,9 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="btn btn-primary btn-sm" id="btnDownloadProxy">⬇ 프록시 실행 파일 다운로드 (.zip)</button>
       </div>
-      <p style="font-size:12px;margin-bottom:12px">또는 터미널에서 직접 실행:</p>
-      <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px;word-break:break-all">npx local-cors-proxy --proxyUrl https://madngine.atlassian.net --port 8080</code>
+      <p style="font-size:12px;margin-bottom:12px">zip 파일 내 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">proxy.js</code> + <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">start-jira-proxy.bat</code> 포함. npm 설치 불필요.</p>
       <p><strong style="color:#e0e0e0">3단계: 프록시 실행 확인</strong></p>
-      <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy Active</code> 메시지가 뜨면 성공. 이 CMD 창은 닫지 마세요.</p>
+      <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy is running</code> 메시지가 뜨면 성공. 이 CMD 창은 닫지 마세요.</p>
       <p style="margin-top:8px;font-size:12px;color:#888">* 프록시는 이 도구를 사용하는 동안만 실행하면 됩니다. CMD 창을 닫으면 프록시도 종료됩니다.</p>
     </div>
   </div>
@@ -958,7 +957,7 @@ async function testJiraConnection() {
       if (mode === 'direct') {
         msg = 'CORS 차단됨 — "로컬 프록시" 모드로 변경 후 프록시를 실행하세요';
       } else if (mode === 'local') {
-        msg = '로컬 프록시 연결 실패 — npx local-cors-proxy 실행 여부를 확인하세요';
+        msg = '로컬 프록시 연결 실패 — 프록시 실행 파일(start-jira-proxy.bat)을 실행했는지 확인하세요';
       } else {
         msg = '프록시 연결 실패 — 프록시 URL을 확인하세요';
       }
@@ -2556,14 +2555,14 @@ async function submitToJira(issuePayloads, resultElId, btn) {
           } catch (diagErr) {
             console.error('[Jira] Diagnostic FAILED — even minimal payload fails:', diagErr.message);
             console.error('[Jira] This likely means the CORS proxy is NOT forwarding POST request body.');
-            console.error('[Jira] Try: npx local-cors-proxy@1.1.0 --proxyUrl https://' + domain + ' --port 8080');
+            console.error('[Jira] 초기 세팅 탭에서 프록시 실행 파일을 다시 다운로드하세요.');
           }
 
           result = { issues: [], errors: [] };
           if (!proxyOk) {
             // All will fail, skip individual attempts
             for (const item of batch) {
-              result.errors.push({ message: `[프록시 오류] POST body가 전달되지 않습니다. 프록시를 재시작하거나 버전을 변경해보세요: npx local-cors-proxy@1.1.0` });
+              result.errors.push({ message: `[프록시 오류] POST body가 전달되지 않습니다. 초기 세팅에서 프록시 파일을 다시 다운로드 후 실행하세요.` });
             }
           } else {
             // Proxy works, issue is with specific fields — try individually
@@ -2767,15 +2766,62 @@ loadJiraSettings();
 // ── Proxy .bat download ──
 $('btnDownloadProxy').addEventListener('click', async () => {
   const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
-  const lines = [
+
+  // Self-contained Node.js CORS proxy (no npm install needed)
+  const proxyJs = `const http = require('http');
+const https = require('https');
+
+const TARGET = '${domain}';
+const PORT = 8080;
+
+http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  const path = req.url.replace(/^\\/proxy/, '');
+  const chunks = [];
+  req.on('data', c => chunks.push(c));
+  req.on('end', () => {
+    const body = Buffer.concat(chunks);
+    const headers = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (['host', 'origin', 'referer', 'connection'].includes(k.toLowerCase())) continue;
+      headers[k] = v;
+    }
+    headers['host'] = TARGET;
+    if (body.length > 0) headers['content-length'] = body.length;
+
+    const opts = { hostname: TARGET, port: 443, path, method: req.method, headers };
+    const proxyReq = https.request(opts, proxyRes => {
+      const rh = { ...proxyRes.headers, 'access-control-allow-origin': '*' };
+      res.writeHead(proxyRes.statusCode, rh);
+      proxyRes.pipe(res);
+    });
+    proxyReq.on('error', err => { res.writeHead(502); res.end('Proxy error: ' + err.message); });
+    if (body.length > 0) proxyReq.write(body);
+    proxyReq.end();
+  });
+}).listen(PORT, () => {
+  console.log('============================================');
+  console.log('  CORS Proxy for Jira - LiveFlow');
+  console.log('  Target: ' + TARGET);
+  console.log('  Port:   ' + PORT);
+  console.log('  URL:    http://localhost:' + PORT + '/proxy/...');
+  console.log('============================================');
+  console.log('Proxy is running. Do not close this window.');
+});
+`;
+
+  const bat = [
     '@echo off',
     'chcp 65001 >nul 2>&1',
-    'echo ============================================',
-    'echo   CORS Proxy for Jira - LiveFlow',
-    `echo   Domain: ${domain}`,
-    'echo   Port:   8080',
-    'echo ============================================',
-    'echo.',
     'where node >nul 2>&1',
     'if errorlevel 1 (',
     '    echo [ERROR] Node.js is not installed.',
@@ -2783,26 +2829,21 @@ $('btnDownloadProxy').addEventListener('click', async () => {
     '    pause',
     '    exit /b',
     ')',
-    'echo Node.js OK!',
-    'echo.',
-    'echo Starting proxy... Do not close this window.',
-    'echo.',
-    `npx --yes local-cors-proxy --proxyUrl https://${domain} --port 8080`,
-    'echo.',
-    'echo Proxy stopped.',
+    'node "%~dp0proxy.js"',
     'pause'
-  ];
-  const bat = lines.join('\r\n');
+  ].join('\r\n');
+
   const zip = new JSZip();
+  zip.file('proxy.js', proxyJs);
   zip.file('start-jira-proxy.bat', bat);
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'start-jira-proxy.zip';
+  a.download = 'jira-proxy.zip';
   a.click();
   URL.revokeObjectURL(url);
-  showToast('start-jira-proxy.zip 다운로드 완료! 압축 해제 후 .bat 파일을 실행하세요.', 'success');
+  showToast('jira-proxy.zip 다운로드 완료! 압축 해제 후 start-jira-proxy.bat을 실행하세요.', 'success');
 });
 
 })();
