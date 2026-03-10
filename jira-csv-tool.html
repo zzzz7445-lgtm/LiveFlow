@@ -976,6 +976,7 @@ async function loadJiraProjects() {
   } catch {}
 }
 
+let jiraVersions = {}; // { projectKey: [{id, name}, ...] }
 async function loadJiraVersions(projectKey) {
   if (!projectKey) {
     $fFixVersion.disabled = true;
@@ -984,6 +985,7 @@ async function loadJiraVersions(projectKey) {
   }
   try {
     const data = await jiraFetch(`/rest/api/3/project/${projectKey}/versions`);
+    jiraVersions[projectKey] = data;
     $fFixVersion.disabled = false;
     const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
     $fFixVersion.innerHTML = '<option value="">수정버전 선택</option>' +
@@ -991,16 +993,52 @@ async function loadJiraVersions(projectKey) {
   } catch {}
 }
 
+/** Look up fix version ID by name */
+function findVersionId(projectKey, versionName) {
+  const versions = jiraVersions[projectKey] || [];
+  const v = versions.find(v => v.name === versionName);
+  return v ? v.id : null;
+}
+
+let jiraIssueTypes = [];
 async function loadJiraIssueTypes() {
   try {
     const data = await jiraFetch('/rest/api/3/issuetype');
+    jiraIssueTypes = data;
+    console.log('[Jira] Issue types:', data.map(t => `${t.name} (id=${t.id}, subtask=${t.subtask})`));
     const types = data.filter(t => !t.subtask);
+    const subTypes = data.filter(t => t.subtask);
     if (types.length > 0) {
       $fIssueType.innerHTML = types.map(t =>
-        `<option value="${escAttr(t.name)}" ${t.name === '스토리' || t.name === 'Story' ? 'selected' : ''}>${esc(t.name)}</option>`
+        `<option value="${escAttr(t.id)}" ${t.name === '스토리' || t.name === 'Story' ? 'selected' : ''}>${esc(t.name)}</option>`
       ).join('');
     }
   } catch {}
+}
+
+/** Look up issue type ID by name (partial match, case-insensitive) */
+function findIssueTypeId(name) {
+  const lower = name.toLowerCase();
+  // Exact match first
+  let t = jiraIssueTypes.find(t => t.name === name);
+  if (t) return t.id;
+  // Case-insensitive match
+  t = jiraIssueTypes.find(t => t.name.toLowerCase() === lower);
+  if (t) return t.id;
+  // Korean↔English mapping
+  const nameMap = {
+    '스토리': 'story', 'story': '스토리',
+    '작업': 'task', 'task': '작업',
+    '버그': 'bug', 'bug': '버그',
+    '에픽': 'epic', 'epic': '에픽',
+    '하위 작업': 'sub-task', 'sub-task': '하위 작업', 'subtask': '하위 작업'
+  };
+  const alt = nameMap[lower];
+  if (alt) {
+    t = jiraIssueTypes.find(t => t.name.toLowerCase() === alt);
+    if (t) return t.id;
+  }
+  return null;
 }
 
 // Assignee autocomplete
@@ -1899,6 +1937,7 @@ $('evProject').addEventListener('change', async () => {
   if (!key) return;
   try {
     const data = await jiraFetch(`/rest/api/3/project/${key}/versions`);
+    jiraVersions[key] = data;
     const ver = $('evFixVersion');
     ver.disabled = false;
     const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
@@ -2191,6 +2230,7 @@ $('stProject').addEventListener('change', async () => {
   if (!key) return;
   try {
     const data = await jiraFetch(`/rest/api/3/project/${key}/versions`);
+    jiraVersions[key] = data;
     const ver = $('stFixVersion');
     ver.disabled = false;
     const unreleased = data.filter(v => !v.released).sort((a, b) => (a.name > b.name ? 1 : -1));
@@ -2404,15 +2444,22 @@ async function jiraFetchPost(path, body) {
  * @param {object} opts - { projectKey, issueType, summary, description, assignee, priority, fixVersion, parent }
  */
 function buildIssueFields(opts) {
+  // Use issue type ID for reliability (name can differ by language/project)
+  const typeId = findIssueTypeId(opts.issueType) || opts.issueType;
+  const isTypeId = /^\d+$/.test(typeId);
+
   const fields = {
     project: { key: opts.projectKey },
-    issuetype: { name: opts.issueType },
+    issuetype: isTypeId ? { id: typeId } : { name: opts.issueType },
     summary: opts.summary,
     description: opts.description || '-'
   };
   if (opts.assignee) fields.assignee = { accountId: opts.assignee };
   if (opts.priority) fields.priority = { name: opts.priority };
-  if (opts.fixVersion) fields.fixVersions = [{ name: opts.fixVersion }];
+  if (opts.fixVersion) {
+    const verId = findVersionId(opts.projectKey, opts.fixVersion);
+    fields.fixVersions = verId ? [{ id: verId }] : [{ name: opts.fixVersion }];
+  }
   if (opts.parent) fields.parent = { key: opts.parent };
   return fields;
 }
