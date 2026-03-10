@@ -2531,16 +2531,60 @@ async function submitToJira(issuePayloads, resultElId, btn) {
         try {
           result = await jiraFetchPost('/rest/api/2/issue/bulk', { issueUpdates: batch });
         } catch (bulkErr) {
-          // Bulk API failed — fallback to individual issue creation
-          console.warn('[Jira] Bulk API failed, falling back to individual creation:', bulkErr.message);
-          result = { issues: [], errors: [] };
-          for (let ii = 0; ii < batch.length; ii++) {
+          console.warn('[Jira] Bulk API failed:', bulkErr.message);
+          // Diagnose: try minimal payload to check if proxy forwards POST body
+          const minPayload = {
+            fields: {
+              project: batch[0].fields.project,
+              issuetype: batch[0].fields.issuetype,
+              summary: '[LiveFlow 진단 테스트] 자동 삭제 예정'
+            }
+          };
+          console.log('[Jira] Diagnosing with minimal payload:', JSON.stringify(minPayload));
+          let proxyOk = false;
+          try {
+            const diag = await jiraFetchPost('/rest/api/2/issue', minPayload);
+            console.log('[Jira] Diagnostic SUCCESS — minimal issue created:', diag.key);
+            proxyOk = true;
+            // Try to delete the test issue
             try {
-              const single = await jiraFetchPost('/rest/api/2/issue', batch[ii]);
-              result.issues.push(single);
-            } catch (singleErr) {
-              console.error(`[Jira] Issue #${ii + 1} failed:`, singleErr.message, '\nPayload:', JSON.stringify(batch[ii], null, 2));
-              result.errors.push({ message: `[${batch[ii].fields?.summary || 'unknown'}] ${singleErr.message}` });
+              const cfg = getJiraAuth();
+              const delUrl = getProxyUrl(cfg.domain, `/rest/api/2/issue/${diag.key}`);
+              await fetch(delUrl, { method: 'DELETE', headers: { 'Authorization': `Basic ${cfg.auth}` } });
+              console.log('[Jira] Diagnostic issue deleted');
+            } catch {}
+          } catch (diagErr) {
+            console.error('[Jira] Diagnostic FAILED — even minimal payload fails:', diagErr.message);
+            console.error('[Jira] This likely means the CORS proxy is NOT forwarding POST request body.');
+            console.error('[Jira] Try: npx local-cors-proxy@1.1.0 --proxyUrl https://' + domain + ' --port 8080');
+          }
+
+          result = { issues: [], errors: [] };
+          if (!proxyOk) {
+            // All will fail, skip individual attempts
+            for (const item of batch) {
+              result.errors.push({ message: `[프록시 오류] POST body가 전달되지 않습니다. 프록시를 재시작하거나 버전을 변경해보세요: npx local-cors-proxy@1.1.0` });
+            }
+          } else {
+            // Proxy works, issue is with specific fields — try individually
+            for (let ii = 0; ii < batch.length; ii++) {
+              try {
+                const single = await jiraFetchPost('/rest/api/2/issue', batch[ii]);
+                result.issues.push(single);
+              } catch (singleErr) {
+                console.error(`[Jira] Issue #${ii + 1} failed:`, singleErr.message);
+                // Try stripping optional fields one by one
+                const stripped = { fields: { ...batch[ii].fields } };
+                delete stripped.fields.assignee;
+                delete stripped.fields.priority;
+                try {
+                  const retry = await jiraFetchPost('/rest/api/2/issue', stripped);
+                  result.issues.push(retry);
+                  console.warn(`[Jira] Issue #${ii + 1} succeeded after removing assignee+priority`);
+                } catch (retryErr) {
+                  result.errors.push({ message: `[${batch[ii].fields?.summary || 'unknown'}] ${singleErr.message}` });
+                }
+              }
             }
           }
         }
