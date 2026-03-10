@@ -1111,7 +1111,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
 
   /* ── Interactive: Drag, Edit, Toolbar, Add ── */
   let _dragBound = false;
-  const colorClasses = ['ev-work','ev-build','ev-bvt','ev-deliver','ev-ios','ev-live','ev-data','ev-standby'];
+  const colorClasses = ['ev-work','ev-build','ev-bvt','ev-deliver','ev-ios','ev-live','ev-data','ev-standby','dt-delivery','dt-deadline','dt-test','dt-update','dt-holiday','dt-final-delivery','dt-final-deadline','dt-final-test'];
 
   function initDragDrop() {
     if (_dragBound) return;
@@ -1218,7 +1218,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
       }
       dragEl.style.left = (e.clientX - offsetX) + 'px';
       dragEl.style.top = (e.clientY - offsetY) + 'px';
-      $timelineCanvas.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
       const under = document.elementFromPoint(e.clientX, e.clientY);
       if (under) {
         const area = under.closest('.tl-event-area');
@@ -1238,7 +1238,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
         if (area) area.appendChild(dragEl);
         else if (ghostEl && ghostEl.parentNode) ghostEl.parentNode.insertBefore(dragEl, ghostEl);
         if (ghostEl) { ghostEl.remove(); ghostEl = null; }
-        $timelineCanvas.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
       } else if (dragEl) {
         // Click without drag → select
         selectEvent(dragEl);
@@ -1248,7 +1248,7 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
     });
 
     // ── Double-click to edit text ──
-    $timelineCanvas.addEventListener('dblclick', e => {
+    function handleDblClick(e) {
       const ev = e.target.closest('.tl-event');
       if (!ev) return;
       selectEvent(ev);
@@ -1261,22 +1261,21 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
-    });
+    }
 
-    $timelineCanvas.addEventListener('focusout', e => {
+    function handleFocusOut(e) {
       const ev = e.target.closest('.tl-event');
       if (ev && ev.classList.contains('editing')) {
         ev.contentEditable = 'false';
         ev.classList.remove('editing');
         ev.style.cursor = '';
       }
-    });
+    }
 
     // ── + Button: Add new event ──
-    $timelineCanvas.addEventListener('click', e => {
+    function handleAddClick(e) {
       if (!e.target.classList.contains('tl-add-btn')) return;
       const btn = e.target;
-      const group = btn.dataset.group;
       const area = btn.parentElement.querySelector('.tl-event-area');
       if (!area) return;
 
@@ -1285,7 +1284,6 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
       newEv.innerHTML = '새 항목';
       area.appendChild(newEv);
 
-      // Auto select & edit
       selectEvent(newEv);
       newEv.contentEditable = 'true';
       newEv.classList.add('editing');
@@ -1296,6 +1294,13 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
+    }
+
+    // Bind to both canvases
+    [$timelineCanvas, $dataTimelineCanvas].forEach(canvas => {
+      canvas.addEventListener('dblclick', handleDblClick);
+      canvas.addEventListener('focusout', handleFocusOut);
+      canvas.addEventListener('click', handleAddClick);
     });
 
   }
@@ -1874,13 +1879,13 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
           if (span) {
             if (ci === span.colStart) {
               const gcEnd = span.colEnd + 3 + 1;
-              html += `<div class="tl-cell" style="grid-column:${ci+3}/${gcEnd};grid-row:${rowNum};min-height:50px;align-items:center;justify-content:center;"><div class="dt-event ${span.cls}" style="width:100%;text-align:center;padding:8px 6px;">${esc(span.text)}</div></div>`;
+              html += `<div class="tl-cell" style="grid-column:${ci+3}/${gcEnd};grid-row:${rowNum};min-height:50px;align-items:flex-start;"><div class="tl-event-area" data-group="d" data-col="${ci}" style="width:100%;"><div class="tl-event dt-event ${span.cls}" style="width:100%;text-align:center;padding:8px 6px;">${esc(span.text)}</div></div></div>`;
             }
             return;
           }
 
           let cls = 'tl-cell';
-          let style = `grid-column:${ci+3};grid-row:${rowNum};min-height:50px;align-items:center;`;
+          let style = `grid-column:${ci+3};grid-row:${rowNum};min-height:50px;align-items:flex-start;`;
 
           // Deadline border
           if (deadlineCols.has(ci)) {
@@ -1889,19 +1894,22 @@ h1 { font-size:1.5rem; background:linear-gradient(135deg,#667eea,#764ba2); -webk
             if (rowNum === 7) style += `border-bottom:${dlS};`;
           }
 
+          const addBtn = `<div class="tl-add-btn" data-group="d" data-col="${ci}" title="이벤트 추가">+</div>`;
           const ev = subRow.events.find(e => e.col === ci);
-          let content = '';
+          let inner = `<div class="tl-event-area" data-group="d" data-col="${ci}">`;
           if (ev) {
-            content = `<div class="dt-event ${ev.cls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
+            inner += `<div class="tl-event dt-event ${ev.cls}">${ev.text.split('\n').map(l=>esc(l)).join('<br>')}</div>`;
           }
+          inner += '</div>';
 
-          html += `<div class="${cls}" style="${style}">${content}</div>`;
+          html += `<div class="${cls}" style="${style}">${addBtn}${inner}</div>`;
         });
       });
     });
 
     html += '</div>';
     $dataTimelineCanvas.innerHTML = html;
+    initDragDrop();
   }
 
 })();
