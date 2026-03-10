@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jira 티켓 CSV 생성기 — LiveFlow</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0f1117;color:#e0e0e0;font-family:'Segoe UI','Malgun Gothic',sans-serif;min-height:100vh}
@@ -277,19 +276,13 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
       <p style="margin-bottom:4px">터미널(CMD/PowerShell)에서 아래 명령어로 설치 여부 확인:</p>
       <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px">node -v</code>
       <p style="margin-bottom:12px;font-size:12px">설치 안 되어 있다면 → <a href="https://nodejs.org" target="_blank">https://nodejs.org</a> 에서 LTS 버전 다운로드</p>
-      <p><strong style="color:#e0e0e0">2단계: 프록시 실행 (방법 택 1)</strong></p>
-      <p style="margin-bottom:8px;font-size:13px;color:#4ade80">방법 A) 터미널에 명령어 붙여넣기 (추천)</p>
+      <p><strong style="color:#e0e0e0">2단계: 프록시 실행</strong></p>
       <p style="margin-bottom:6px;font-size:12px">아래 버튼 클릭 → CMD 또는 PowerShell 열기 → 붙여넣기 → Enter</p>
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="btn btn-primary btn-sm" id="btnCopyProxyCmd">📋 프록시 실행 명령어 복사</button>
       </div>
-      <p style="margin-bottom:8px;font-size:13px;color:#e0e0e0">방법 B) 파일 다운로드</p>
-      <p style="margin-bottom:6px;font-size:12px">zip 다운로드 → <span style="color:#fbbf24">우클릭 → 속성 → '차단 해제' 체크 → 확인</span> → 압축 해제 → .bat 실행</p>
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button class="btn btn-sm" id="btnDownloadProxy" style="background:#333;color:#ccc;border:1px solid #555">⬇ 프록시 파일 다운로드 (.zip)</button>
-      </div>
       <p><strong style="color:#e0e0e0">3단계: 프록시 실행 확인</strong></p>
-      <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy is running</code> 메시지가 뜨면 성공. 이 CMD 창은 닫지 마세요.</p>
+      <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy OK</code> 메시지가 뜨면 성공. 이 CMD 창은 닫지 마세요.</p>
       <p style="margin-top:8px;font-size:12px;color:#888">* 프록시는 이 도구를 사용하는 동안만 실행하면 됩니다. CMD 창을 닫으면 프록시도 종료됩니다.</p>
     </div>
   </div>
@@ -2789,98 +2782,6 @@ $('btnCopyProxyCmd').addEventListener('click', () => {
   });
 });
 
-// ── Proxy .bat download ──
-$('btnDownloadProxy').addEventListener('click', async () => {
-  const domain = cleanDomain($('jiraDomain').value.trim()) || 'madngine.atlassian.net';
-
-  // Self-contained Node.js CORS proxy (no npm install needed)
-  const proxyJs = `const http = require('http');
-const https = require('https');
-
-const TARGET = '${domain}';
-const PORT = 8080;
-
-http.createServer((req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  const path = req.url.replace('/proxy', '');
-  console.log(req.method + ' ' + path);
-
-  const chunks = [];
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const body = Buffer.concat(chunks);
-
-    // Only forward essential headers
-    const headers = {
-      'host': TARGET,
-      'accept': 'application/json'
-    };
-    if (req.headers.authorization) headers['authorization'] = req.headers.authorization;
-    if (req.headers['content-type']) headers['content-type'] = req.headers['content-type'];
-    if (body.length > 0) headers['content-length'] = body.length;
-
-    const opts = { hostname: TARGET, port: 443, path, method: req.method, headers };
-    const proxyReq = https.request(opts, proxyRes => {
-      const rh = {
-        'access-control-allow-origin': '*',
-        'content-type': proxyRes.headers['content-type'] || 'application/json'
-      };
-      res.writeHead(proxyRes.statusCode, rh);
-      proxyRes.pipe(res);
-    });
-    proxyReq.on('error', err => {
-      console.error('Proxy error:', err.message);
-      res.writeHead(502);
-      res.end('Proxy error: ' + err.message);
-    });
-    if (body.length > 0) proxyReq.write(body);
-    proxyReq.end();
-  });
-}).listen(PORT, () => {
-  console.log('============================================');
-  console.log('  CORS Proxy for Jira - LiveFlow');
-  console.log('  Target: ' + TARGET);
-  console.log('  Port:   ' + PORT);
-  console.log('============================================');
-  console.log('Proxy is running. Do not close this window.');
-});
-`;
-
-  const bat = [
-    '@echo off',
-    'chcp 65001 >nul 2>&1',
-    'where node >nul 2>&1',
-    'if errorlevel 1 (',
-    '    echo [ERROR] Node.js is not installed.',
-    '    echo Download from https://nodejs.org',
-    '    pause',
-    '    exit /b',
-    ')',
-    'node "%~dp0proxy.js"',
-    'pause'
-  ].join('\r\n');
-
-  const zip = new JSZip();
-  zip.file('proxy.js', proxyJs);
-  zip.file('start-jira-proxy.bat', bat);
-  const blob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'jira-proxy.zip';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('jira-proxy.zip 다운로드 완료! 압축 해제 후 start-jira-proxy.bat을 실행하세요.', 'success');
-});
 
 })();
 </script>
