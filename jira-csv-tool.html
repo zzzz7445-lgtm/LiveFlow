@@ -277,12 +277,17 @@ td input[type="checkbox"]{accent-color:#667eea;width:16px;height:16px;cursor:poi
       <p style="margin-bottom:4px">터미널(CMD/PowerShell)에서 아래 명령어로 설치 여부 확인:</p>
       <code style="display:block;background:#0f1117;padding:10px 14px;border-radius:6px;margin-bottom:12px;color:#4ade80;font-size:12px">node -v</code>
       <p style="margin-bottom:12px;font-size:12px">설치 안 되어 있다면 → <a href="https://nodejs.org" target="_blank">https://nodejs.org</a> 에서 LTS 버전 다운로드</p>
-      <p><strong style="color:#e0e0e0">2단계: 프록시 실행 파일 다운로드 & 실행</strong></p>
-      <p style="margin-bottom:8px">아래 버튼을 클릭하면 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">.zip</code> 파일이 다운로드됩니다. 압축 해제 후 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">.bat</code> 파일을 더블클릭으로 실행하세요.</p>
+      <p><strong style="color:#e0e0e0">2단계: 프록시 실행 (방법 택 1)</strong></p>
+      <p style="margin-bottom:8px;font-size:13px;color:#4ade80">방법 A) 터미널에 명령어 붙여넣기 (추천)</p>
+      <p style="margin-bottom:6px;font-size:12px">아래 버튼 클릭 → CMD 또는 PowerShell 열기 → 붙여넣기 → Enter</p>
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button class="btn btn-primary btn-sm" id="btnDownloadProxy">⬇ 프록시 실행 파일 다운로드 (.zip)</button>
+        <button class="btn btn-primary btn-sm" id="btnCopyProxyCmd">📋 프록시 실행 명령어 복사</button>
       </div>
-      <p style="font-size:12px;margin-bottom:12px">zip 파일 내 <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">proxy.js</code> + <code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">start-jira-proxy.bat</code> 포함. npm 설치 불필요.</p>
+      <p style="margin-bottom:8px;font-size:13px;color:#e0e0e0">방법 B) 파일 다운로드</p>
+      <p style="margin-bottom:6px;font-size:12px">zip 다운로드 → <span style="color:#fbbf24">우클릭 → 속성 → '차단 해제' 체크 → 확인</span> → 압축 해제 → .bat 실행</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-sm" id="btnDownloadProxy" style="background:#333;color:#ccc;border:1px solid #555">⬇ 프록시 파일 다운로드 (.zip)</button>
+      </div>
       <p><strong style="color:#e0e0e0">3단계: 프록시 실행 확인</strong></p>
       <p><code style="background:#0f1117;padding:2px 6px;border-radius:3px;font-size:11px">Proxy is running</code> 메시지가 뜨면 성공. 이 CMD 창은 닫지 마세요.</p>
       <p style="margin-top:8px;font-size:12px;color:#888">* 프록시는 이 도구를 사용하는 동안만 실행하면 됩니다. CMD 창을 닫으면 프록시도 종료됩니다.</p>
@@ -2762,6 +2767,18 @@ $('stBtnJiraSubmit').addEventListener('click', async () => {
    INIT
    ═══════════════════════════════════════════ */
 loadJiraSettings();
+
+// ── Proxy command copy ──
+$('btnCopyProxyCmd').addEventListener('click', () => {
+  const domain = $('jiraDomain').value.trim() || 'madngine.atlassian.net';
+  const cmd = `node -e "const h=require('http'),s=require('https');h.createServer((q,r)=>{r.setHeader('Access-Control-Allow-Origin','*');r.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');r.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,Accept');if(q.method==='OPTIONS'){r.writeHead(204);r.end();return}let p=q.url.replace(/^\\\\/proxy/,''),b=[];q.on('data',c=>b.push(c));q.on('end',()=>{let d=Buffer.concat(b),hd={};for(let[k,v]of Object.entries(q.headers)){if(['host','origin','referer','connection'].includes(k))continue;hd[k]=v}hd.host='${domain}';if(d.length)hd['content-length']=d.length;let x=s.request({hostname:'${domain}',port:443,path:p,method:q.method,headers:hd},z=>{r.writeHead(z.statusCode,{...z.headers,'access-control-allow-origin':'*'});z.pipe(r)});x.on('error',e=>{r.writeHead(502);r.end(e.message)});if(d.length)x.write(d);x.end()})}).listen(8080,()=>console.log('Proxy running on http://localhost:8080 -> ${domain}'))"`;
+  navigator.clipboard.writeText(cmd).then(() => {
+    showToast('프록시 명령어가 클립보드에 복사되었습니다! CMD 또는 PowerShell에 붙여넣기하세요.', 'success');
+  }).catch(() => {
+    // Fallback: show in prompt
+    prompt('아래 명령어를 복사하세요:', cmd);
+  });
+});
 
 // ── Proxy .bat download ──
 $('btnDownloadProxy').addEventListener('click', async () => {
