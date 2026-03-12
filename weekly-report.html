@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주간업무보고 생성기</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c14;
+            --surface: #13131f;
+            --surface2: #1a1a2b;
+            --surface3: #222236;
+            --border: rgba(255,255,255,0.06);
+            --border-hover: rgba(255,255,255,0.12);
+            --text: #e8e8f0;
+            --text-secondary: #8888a8;
+            --text-muted: #55556e;
+            --accent: #6c5ce7;
+            --accent-light: #a29bfe;
+            --accent-glow: rgba(108,92,231,0.15);
+            --green: #00b894;
+            --green-glow: rgba(0,184,148,0.12);
+            --orange: #f39c12;
+            --red: #e74c3c;
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, 'Malgun Gothic', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ====== Header ====== */
+        .header {
+            height: 56px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 12px;
+            position: relative;
+            z-index: 10;
+        }
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.3;
+        }
+        .logo {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px; color: #fff;
+        }
+        .header-title {
+            font-size: 15px; font-weight: 600; color: var(--text);
+            letter-spacing: -0.3px;
+        }
+        .header-badge {
+            font-size: 10px;
+            background: var(--accent-glow);
+            color: var(--accent-light);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        .header-spacer { flex: 1; }
+        .header-date {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        /* ====== Layout ====== */
+        .layout {
+            display: flex;
+            height: calc(100vh - 56px);
+        }
+
+        /* ====== Left Panel ====== */
+        .panel-left {
+            width: 420px;
+            min-width: 380px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .panel-left::-webkit-scrollbar { width: 4px; }
+        .panel-left::-webkit-scrollbar-track { background: transparent; }
+        .panel-left::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+
+        /* ====== Right Panel ====== */
+        .panel-right {
+            flex: 1;
+            background: var(--bg);
+            overflow-y: auto;
+            padding: 24px;
+        }
+        .panel-right::-webkit-scrollbar { width: 6px; }
+        .panel-right::-webkit-scrollbar-track { background: transparent; }
+        .panel-right::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+
+        /* ====== Cards ====== */
+        .card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: var(--border-hover); }
+
+        .card-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title svg {
+            width: 14px; height: 14px;
+            opacity: 0.5;
+        }
+
+        /* ====== Form Elements ====== */
+        .form-group { margin-bottom: 12px; }
+        .form-row { display: flex; gap: 10px; }
+        .form-row > .form-group { flex: 1; }
+
+        .form-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            letter-spacing: 0.3px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 9px 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-size: 13px;
+            font-family: inherit;
+            transition: all 0.2s;
+            outline: none;
+        }
+        .form-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .form-input::placeholder { color: var(--text-muted); }
+        .form-input[readonly] {
+            color: var(--text-secondary);
+            cursor: default;
+        }
+
+        textarea.form-input {
+            resize: vertical;
+            min-height: 80px;
+            line-height: 1.6;
+            font-size: 12px;
+        }
+
+        /* ====== File Upload ====== */
+        .upload-zone {
+            border: 1.5px dashed var(--surface3);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .upload-zone::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--accent-glow), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .upload-zone:hover {
+            border-color: var(--accent);
+        }
+        .upload-zone:hover::before { opacity: 1; }
+        .upload-zone.loaded {
+            border-color: var(--green);
+            border-style: solid;
+        }
+        .upload-zone.loaded::before {
+            background: var(--green-glow);
+            opacity: 1;
+        }
+        .upload-zone input { display: none; }
+
+        .upload-icon {
+            width: 36px; height: 36px;
+            flex-shrink: 0;
+            background: var(--surface3);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+            z-index: 1;
+            transition: all 0.3s;
+        }
+        .upload-zone:hover .upload-icon {
+            background: var(--accent);
+        }
+        .upload-zone.loaded .upload-icon {
+            background: var(--green);
+        }
+        .upload-icon svg { width: 18px; height: 18px; color: var(--text-secondary); }
+        .upload-zone:hover .upload-icon svg,
+        .upload-zone.loaded .upload-icon svg { color: #fff; }
+
+        .upload-info { position: relative; z-index: 1; min-width: 0; }
+        .upload-label {
+            font-size: 13px; font-weight: 500; color: var(--text);
+        }
+        .upload-hint {
+            font-size: 11px; color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .upload-filename {
+            font-size: 12px; color: var(--green);
+            margin-top: 2px; font-weight: 500;
+            position: relative; z-index: 1;
+        }
+
+        /* ====== Parsed Summary ====== */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .summary-dept {
+            font-size: 10px; font-weight: 600; color: var(--accent-light);
+            text-transform: uppercase; letter-spacing: 0.8px;
+            margin-top: 6px; margin-bottom: 2px;
+        }
+        .summary-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+        .summary-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .summary-chip .num {
+            font-weight: 600;
+            font-size: 11px;
+        }
+        .summary-chip .num.done { color: var(--green); }
+        .summary-chip .num.wip { color: var(--orange); }
+
+        /* ====== Buttons ====== */
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .btn {
+            padding: 9px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            letter-spacing: 0.2px;
+        }
+        .btn svg { width: 14px; height: 14px; }
+
+        .btn-accent {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(108,92,231,0.3);
+        }
+        .btn-accent:hover {
+            background: #7c6ef0;
+            box-shadow: 0 4px 20px rgba(108,92,231,0.4);
+            transform: translateY(-1px);
+        }
+        .btn-ghost {
+            background: var(--surface3);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover {
+            background: var(--surface2);
+            color: var(--text);
+            border-color: var(--border-hover);
+        }
+        .btn-green {
+            background: var(--green);
+            color: #fff;
+            box-shadow: 0 2px 12px rgba(0,184,148,0.25);
+        }
+        .btn-green:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+
+        /* ====== Tabs ====== */
+        .tabs {
+            display: flex;
+            gap: 2px;
+            background: var(--surface2);
+            padding: 3px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+            width: fit-content;
+        }
+        .tab-btn {
+            padding: 7px 16px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(108,92,231,0.25);
+        }
+        .tab-btn:not(.active):hover {
+            color: var(--text);
+            background: var(--surface3);
+        }
+
+        /* ====== Preview ====== */
+        .preview-wrapper {
+            background: #ffffff;
+            color: #1a1a2e;
+            border-radius: var(--radius);
+            padding: 48px;
+            max-width: 860px;
+            margin: 0 auto;
+            box-shadow: 0 4px 40px rgba(0,0,0,0.3);
+            font-size: 13px;
+            line-height: 1.85;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+        .preview-wrapper h2 {
+            font-size: 17px;
+            font-weight: 700;
+            color: #111;
+            text-align: center;
+            margin-bottom: 6px;
+            letter-spacing: -0.3px;
+        }
+        .preview-wrapper .meta {
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 28px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .preview-wrapper .section-header {
+            font-size: 14px; font-weight: 700; color: #111;
+            margin-top: 24px; margin-bottom: 8px;
+        }
+        .preview-wrapper .dept-header {
+            font-weight: 700; color: #333;
+            margin-top: 18px; margin-left: 24px;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+        .preview-wrapper .team-header {
+            margin-left: 44px; margin-top: 12px; color: #444;
+        }
+        .preview-wrapper .work-type {
+            margin-left: 64px; font-weight: 600; color: #222;
+        }
+        .preview-wrapper .work-item { margin-left: 84px; color: #444; }
+        .preview-wrapper .work-sub-item { margin-left: 104px; color: #555; }
+        .preview-wrapper .event-section { margin-left: 44px; }
+        .preview-wrapper .event-sub { margin-left: 64px; }
+        .preview-wrapper .event-detail { margin-left: 84px; color: #555; }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            color: #888;
+        }
+        .empty-state svg {
+            width: 48px; height: 48px;
+            color: #ccc;
+            margin-bottom: 16px;
+        }
+        .empty-state .empty-title {
+            font-size: 15px; font-weight: 600; color: #999;
+            margin-bottom: 6px;
+        }
+        .empty-state .empty-desc {
+            font-size: 13px; color: #bbb;
+        }
+
+        .text-output {
+            width: 100%;
+            height: calc(100vh - 140px);
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            font-size: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            line-height: 1.8;
+            resize: none;
+            outline: none;
+        }
+
+        /* ====== Toast ====== */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--surface2);
+            color: var(--text);
+            padding: 10px 24px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        .toast svg { width: 16px; height: 16px; color: var(--green); }
+
+        /* ====== Scrollbar global ====== */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <div class="logo">W</div>
+    <span class="header-title">주간업무보고 생성기</span>
+    <span class="header-badge">MAD STUDIO</span>
+    <div class="header-spacer"></div>
+    <span class="header-date" id="headerDate"></span>
+</div>
+
+<div class="layout">
+    <!-- ====== Left Panel ====== -->
+    <div class="panel-left">
+
+        <!-- Basic Info -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                보고 정보
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">보고 날짜</label>
+                    <input type="date" class="form-input" id="reportDate">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">주차 (자동)</label>
+                    <input type="text" class="form-input" id="weekInfo" readonly placeholder="날짜를 선택하세요">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">기간 시작</label>
+                    <input type="date" class="form-input" id="periodStart">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">기간 종료</label>
+                    <input type="date" class="form-input" id="periodEnd">
+                </div>
+            </div>
+        </div>
+
+        <!-- Events -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                중요 이벤트
+            </div>
+            <div class="form-group">
+                <label class="form-label">국내 (KR)</label>
+                <textarea class="form-input" id="domesticEvents" rows="5" placeholder="i. M38 업데이트&#10;● 3/9(월) – 7차 데이터 패치 및 서버 빌드&#10;● 3/10(화) – 8차 데이터 패치 및 서버 빌드"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">글로벌 (GL)</label>
+                <textarea class="form-input" id="globalEvents" rows="5" placeholder="i. M23_0310 업데이트&#10;● 3/9(월) – 최종 데이터 패치 및 서버 빌드&#10;ii. M23_0324 업데이트&#10;● 3/12(목) - 1차 데이터 패치 및 서버 빌드"></textarea>
+            </div>
+        </div>
+
+        <!-- Upload -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+                주간 보고 취합 (엑셀)
+            </div>
+            <div class="upload-zone" id="fileUploadArea" onclick="document.getElementById('excelFile').click()">
+                <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="handleFileUpload(event)">
+                <div class="upload-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="upload-info">
+                    <div class="upload-label">엑셀 파일을 드래그하거나 클릭</div>
+                    <div class="upload-hint">.xlsx, .xls 지원</div>
+                    <div class="upload-filename" id="fileName"></div>
+                </div>
+            </div>
+            <div id="parsedSummary"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="card">
+            <div class="card-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+                실행
+            </div>
+            <div class="btn-row" style="margin-bottom:10px;">
+                <button class="btn btn-accent" onclick="generateReport()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    보고서 생성
+                </button>
+                <button class="btn btn-ghost" onclick="copyToClipboard()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    텍스트 복사
+                </button>
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-green" onclick="openInOutlook()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                    Outlook으로 보내기
+                </button>
+            </div>
+        </div>
+
+        <input type="hidden" id="mailTo" value="dl_nightcrows_all@madngine.com">
+        <input type="hidden" id="mailCc" value="dl_mad_pd@madngine.com">
+    </div>
+
+    <!-- ====== Right Panel ====== -->
+    <div class="panel-right">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('text', this)">미리보기</button>
+        </div>
+
+        <div id="textTab">
+            <textarea class="text-output" id="reportText" readonly></textarea>
+        </div>
+        <textarea id="reportHtml" style="display:none"></textarea>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <span id="toastText"></span>
+</div>
+
+<script>
+// ========== Global State ==========
+let parsedTeamData = null;
+const DAYS_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+const SHEET_DEPT_MAP = {
+    '디자인실': { dept: '디자인실', dataCol: 3 },
+    '프로그램실': { dept: '프로그램실', dataCol: 2 },
+    '아트실': { dept: '아트실', dataCol: 2 }
+};
+
+const DEPT_TEAM_ORDER = {
+    '디자인실': ['밸런스팀', 'UI팀', '전투팀', '콘텐츠팀', '시스템팀', '글로벌 밸런스팀', '글로벌 시스템팀'],
+    '프로그램실': ['클라이언트팀', '서버팀'],
+    '아트실': ['캐릭터팀', '애니메이션팀', '이펙트팀', '배경 컨셉팀', '배경제작팀', 'TA']
+};
+
+const FILTER_TEAM_MAP = {
+    '밸팀': '밸런스팀', 'UI팀': 'UI팀', '전투팀': '전투팀',
+    '콘팀': '콘텐츠팀', '콘텐츠팀': '콘텐츠팀', '시스템팀': '시스템팀',
+    'GL-밸팀': '글로벌 밸런스팀', 'GL밸팀': '글로벌 밸런스팀',
+    'GL-시스템팀': '글로벌 시스템팀', 'GL시스템팀': '글로벌 시스템팀',
+    '클라팀': '클라이언트팀', '서버팀': '서버팀', '캐릭터팀': '캐릭터팀',
+    '애니메이션팀': '애니메이션팀', '애니팀': '애니메이션팀', '이펙트팀': '이펙트팀',
+    '배경컨셉팀': '배경 컨셉팀', '배경제작팀': '배경 제작팀', 'TA': 'TA', 'TA팀': 'TA'
+};
+
+// ========== Initialize ==========
+document.addEventListener('DOMContentLoaded', () => {
+    const today = new Date();
+    document.getElementById('headerDate').textContent = today.toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+
+    const dayOfWeek = today.getDay();
+    const friday = new Date(today);
+    if (dayOfWeek <= 5 && dayOfWeek > 0) {
+        friday.setDate(today.getDate() + (5 - dayOfWeek));
+    }
+    document.getElementById('reportDate').value = formatDate(friday);
+
+    const monday = new Date(friday);
+    monday.setDate(friday.getDate() - (friday.getDay() - 1));
+    document.getElementById('periodStart').value = formatDate(monday);
+    document.getElementById('periodEnd').value = formatDate(friday);
+
+    updateWeekInfo();
+    document.getElementById('reportDate').addEventListener('change', updateWeekInfo);
+    document.getElementById('periodStart').addEventListener('change', updateWeekInfo);
+    document.getElementById('periodEnd').addEventListener('change', updateWeekInfo);
+
+    const dropArea = document.getElementById('fileUploadArea');
+    dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.style.borderColor = 'var(--accent)'; });
+    dropArea.addEventListener('dragleave', () => { dropArea.style.borderColor = ''; });
+    dropArea.addEventListener('drop', e => {
+        e.preventDefault(); dropArea.style.borderColor = '';
+        if (e.dataTransfer.files.length > 0) {
+            document.getElementById('excelFile').files = e.dataTransfer.files;
+            handleFileUpload({ target: { files: e.dataTransfer.files } });
+        }
+    });
+});
+
+function formatDate(d) { return d.toISOString().split('T')[0]; }
+
+function updateWeekInfo() {
+    const dateStr = document.getElementById('reportDate').value;
+    if (!dateStr) return;
+    const d = new Date(dateStr);
+    const month = d.getMonth() + 1;
+    const weekOfMonth = Math.ceil(d.getDate() / 7);
+    const startStr = document.getElementById('periodStart').value;
+    const endStr = document.getElementById('periodEnd').value;
+    if (startStr && endStr) {
+        const s = new Date(startStr), e = new Date(endStr);
+        const sy = s.getFullYear().toString().slice(2);
+        document.getElementById('weekInfo').value = `${month}월 ${weekOfMonth}주차 '${sy} ${s.getMonth()+1}. ${s.getDate()}. (${DAYS_KR[s.getDay()]}) ~ ${e.getMonth()+1}. ${e.getDate()}. (${DAYS_KR[e.getDay()]})`;
+    } else {
+        document.getElementById('weekInfo').value = `${month}월 ${weekOfMonth}주차`;
+    }
+}
+
+// ========== Excel Parsing ==========
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileUploadArea').classList.add('loaded');
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            parsedTeamData = parseWorkbook(workbook);
+            showParsedSummary(parsedTeamData);
+            showToast('엑셀 파싱 완료');
+        } catch (err) {
+            showToast('파싱 오류: ' + err.message);
+            console.error(err);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function parseWorkbook(workbook) {
+    const result = {};
+    workbook.SheetNames.forEach(sheetName => {
+        const config = SHEET_DEPT_MAP[sheetName];
+        if (!config) return;
+        const ws = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        result[config.dept] = parseSheet(rows, config.dataCol);
+    });
+    return result;
+}
+
+function parseSheet(rows, dataCol) {
+    const teams = {};
+    let currentTeam = null;
+    let currentSection = null;
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const content = (row[dataCol] || '').toString().trim();
+        if (!content) continue;
+        if (content === '[작성 가이드]' || content.startsWith('우리팀으로')) continue;
+        if (/^\d+\.\s(내용은|되도록)/.test(content)) continue;
+        const teamMatch = content.match(/^\d+\.\s*(.+)$/);
+        if (teamMatch && !content.match(/^\d+\.\s*(내용|되도록)/)) {
+            currentTeam = teamMatch[1].trim();
+            if (!teams[currentTeam]) teams[currentTeam] = { completed: [], inProgress: [] };
+            currentSection = null; continue;
+        }
+        if (content === '완료된 작업' || content === '완료한 작업') { currentSection = 'completed'; continue; }
+        if (content === '진행중인 작업' || content === '진행 중인 작업' || content === '진행중 작업') { currentSection = 'inProgress'; continue; }
+        if (!currentTeam || !currentSection) continue;
+        if (content === '작업자') continue;
+        const isSubItem = content.startsWith('- ') || content.startsWith('─ ');
+        const isGroupHeader = /^\[M\d+\]$/.test(content) ||
+            /^(GL|KR)\s*[-–]?\s*\[M\d+\]/.test(content) ||
+            /^(GL|KR|국내|글로벌)$/.test(content) ||
+            /^(GL|KR)\s*$/.test(content) ||
+            /^(캐릭터 제작팀|캐릭터 원화팀|제작 \d+팀|제작\d+팀)$/.test(content) ||
+            /^(로컬라이징|로컬라이징 작업)$/.test(content);
+        if (isGroupHeader) { teams[currentTeam][currentSection].push({ type: 'group', text: content }); continue; }
+        const cleanText = content.replace(/^[-─]\s*/, '').trim();
+        if (cleanText) teams[currentTeam][currentSection].push({ type: isSubItem ? 'sub' : 'item', text: cleanText });
+    }
+    return teams;
+}
+
+function showParsedSummary(data) {
+    const el = document.getElementById('parsedSummary');
+    if (!data || Object.keys(data).length === 0) { el.innerHTML = ''; return; }
+    let html = '<div class="summary-grid">';
+    for (const [dept, teams] of Object.entries(data)) {
+        html += `<div class="summary-dept">${dept}</div><div class="summary-chips">`;
+        for (const [team, s] of Object.entries(teams)) {
+            const cc = s.completed.filter(i => i.type !== 'group').length;
+            const ic = s.inProgress.filter(i => i.type !== 'group').length;
+            html += `<span class="summary-chip">${team} <span class="num done">${cc}</span>/<span class="num wip">${ic}</span></span>`;
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+// ========== Report Generation ==========
+function generateReport() {
+    const reportDate = document.getElementById('reportDate').value;
+    const weekInfo = document.getElementById('weekInfo').value;
+    const domesticEvents = document.getElementById('domesticEvents').value;
+    const globalEvents = document.getElementById('globalEvents').value;
+    if (!reportDate) { showToast('보고 날짜를 선택하세요'); return; }
+    const d = new Date(reportDate);
+    const dateStr = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+    document.getElementById('reportText').value = buildReportText(dateStr, weekInfo, domesticEvents, globalEvents);
+    document.getElementById('reportHtml').value = buildEmailHtml(dateStr, weekInfo, domesticEvents, globalEvents);
+    showToast('보고서 생성 완료!');
+}
+
+function parseEventText(text) {
+    if (!text.trim()) return [];
+    return text.split('\n').filter(l => l.trim()).map(line => {
+        let t = line.trim();
+        if (t.match(/^[ivx]+\.\s/i) || t.match(/^\d+\.\s/)) return { type: 'title', text: t };
+        const bm = t.match(/^[●•○◦\-\*·※▶►→]\s*/);
+        if (bm) return { type: 'detail', text: t.substring(bm[0].length).trim() };
+        // 날짜 패턴(3/9, 12/25 등)으로 시작하면 detail
+        if (t.match(/^\d{1,2}[\/\.]\d{1,2}/)) return { type: 'detail', text: t };
+        return { type: 'title', text: t };
+    });
+}
+
+function cleanItemText(text) {
+    return text
+        .replace(/^\s*>+\s*/g, '')                     // 앞의 > 꺽쇠 제거
+        .replace(/\s*\(?#?PM[-–]\d+\)?\s*/gi, '')   // JIRA 티켓 번호 제거
+        .replace(/\s*<[^>]*$/g, '')                   // < 이후 내용 제거
+        .replace(/\s*<\s*$/g, '')                     // 끝에 남은 < 제거
+        .replace(/\s*[-–]>\s*/g, ' ')                 // -> 화살표 제거
+        .replace(/\s*→\s*/g, ' ')                     // → 화살표 제거
+        .replace(/\(\s*\)/g, '')                       // 빈 괄호 제거
+        .replace(/\s{2,}/g, ' ')                       // 연속 공백 정리
+        .trim();
+}
+
+function processItems(items, teamName) {
+    const result = [];
+    let currentPrefix = null;
+    const isUITeam = teamName && /UI/i.test(teamName);
+    let currentRegion = null; // UI팀용: GL/KR 권역 추적
+    for (const item of items) {
+        if (item.type === 'group') {
+            const gt = item.text.trim();
+            // UI팀: GL/KR 단독 그룹 → 권역 저장, 출력 안함
+            if (isUITeam && /^(GL|KR)$/i.test(gt)) {
+                currentRegion = gt.toUpperCase();
+                continue;
+            }
+            // UI팀: GL [M23] 결합 형식 → 권역+마일스톤 분리
+            if (isUITeam) {
+                const cm = gt.match(/^(GL|KR)\s*[-–]?\s*\[?(M\d+)\]?/i);
+                if (cm) {
+                    const prefix = `[${cm[1].toUpperCase()}] ${cm[2]}`;
+                    currentPrefix = prefix;
+                    result.push({ type: 'group', text: prefix });
+                    continue;
+                }
+            }
+            // [M##] 그룹 헤더 — UI팀이면 권역 결합
+            const mm = gt.match(/^\[?(M\d+)\]?$/);
+            if (mm) {
+                const prefix = (isUITeam && currentRegion) ? `[${currentRegion}] ${mm[1]}` : `[${mm[1]}]`;
+                currentPrefix = prefix;
+                result.push({ type: 'group', text: prefix });
+                continue;
+            }
+            currentPrefix = item.text;
+            result.push(item);
+            continue;
+        }
+        const raw = item.text.trim();
+        const arrowMatch = raw.match(/^(>+)\s*/);
+        const subLevel = arrowMatch ? arrowMatch[1].length : 0;
+        let text = cleanItemText(raw);
+        if (!text) continue;
+        // UI팀: GL/KR 단독 라인 → 권역 저장, 별도 출력 안함
+        if (isUITeam && /^(GL|KR)$/i.test(text)) {
+            currentRegion = text.toUpperCase();
+            continue;
+        }
+        // 마일스톤 프리픽스 감지: [M37], GL [M37], GL-[M37], KR [M38] 등
+        const pm = text.match(/^(?:(GL|KR)\s*[-–]?\s*)?\[(M\d+)\]\s*/);
+        if (pm) {
+            const region = pm[1] || currentRegion;
+            const milestone = pm[2];
+            const prefix = (isUITeam && region) ? `[${region}] ${milestone}` : `[${milestone}]`;
+            text = text.substring(pm[0].length).trim();
+            if (prefix !== currentPrefix) {
+                currentPrefix = prefix;
+                result.push({ type: 'group', text: prefix });
+            }
+            if (text) result.push({ type: subLevel >= 2 ? 'subsub' : 'sub', text });
+        } else {
+            if (!isUITeam) currentRegion = null;
+            // 그룹(마일스톤) 아래 항목 → sub로 승격 (들여쓰기 적용)
+            let type = item.type;
+            if (subLevel >= 2) type = 'subsub';
+            else if (subLevel >= 1) type = 'sub';
+            else if (currentPrefix && type === 'item') type = 'sub';
+            result.push({ type, text });
+        }
+    }
+    return result;
+}
+
+function renderTeamSection(teams, dept, renderItem) {
+    const romanNumerals = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+    const allTeamNames = Object.keys(teams);
+    const orderedTeams = getOrderedTeams(dept, allTeamNames);
+    let teamIdx = 0;
+    for (const teamName of orderedTeams) {
+        const td = teams[teamName];
+        if (!td) continue;
+        const num = romanNumerals[teamIdx] || String(teamIdx+1);
+        renderItem('team', num, teamName);
+        const completed = processItems(td.completed, teamName);
+        const inProgress = processItems(td.inProgress, teamName);
+        if (completed.length > 0) { renderItem('workType', '완료된 작업'); completed.forEach(i => renderItem(i.type, i.text)); }
+        if (inProgress.length > 0) { renderItem('workType', '진행중인 작업'); inProgress.forEach(i => renderItem(i.type, i.text)); }
+        teamIdx++;
+    }
+}
+
+function buildReportHtml(dateStr, weekInfo, domEv, glEv) {
+    let h = `<div style="margin-bottom:24px;padding-bottom:20px;border-bottom:2px solid #eee;line-height:1.9;color:#444;">
+<p>안녕하세요.<br>매드스튜디오 나이트크로우 주간업무보고를 전체 공유 드립니다.</p>
+<p>현재까지 확정된 스펙 및 일감들은 하기 경로에 있는 로드맵 문서 및 JIRA에서 확인이 가능하니 참고 부탁드립니다.<br>※ 로드맵 문서 경로: //Depot/Main/Common/ProjectM_Roadmap.xlsx</p>
+<p>주간업무보고를 전사에 공유 드리는 주된 목적은 스튜디오 내, 타 팀에서 어떠한 작업을 진행하고 있는지에 대한 정보 공유입니다.</p>
+<p>추가적으로 궁금하시거나 문의 주실 부분이 있으시다면 편하신 채널로 연락 부탁드립니다.</p>
+<p>감사합니다.</p></div>
+<h2>[ 매드스튜디오 주간업무보고 ]</h2><div class="meta">${weekInfo}</div>`;
+    h += `<div class="section-header">1. 예정된 중요 이벤트 공유</div>`;
+    if (domEv.trim()) {
+        h += `<div class="event-section"><b>① 국내</b></div>`;
+        let evIdx1 = 0; const rom = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+        parseEventText(domEv).forEach(e => {
+            if (e.type==='title') h += `<div class="event-sub">${rom[evIdx1++]||evIdx1}. ${esc(e.text)}</div>`;
+            else h += `<div class="event-detail">● ${esc(e.text)}</div>`;
+        });
+    }
+    if (glEv.trim()) {
+        h += `<div class="event-section" style="margin-top:10px"><b>② 글로벌</b></div>`;
+        let evIdx2 = 0; const rom2 = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+        parseEventText(glEv).forEach(e => {
+            if (e.type==='title') h += `<div class="event-sub">${rom2[evIdx2++]||evIdx2}. ${esc(e.text)}</div>`;
+            else h += `<div class="event-detail">● ${esc(e.text)}</div>`;
+        });
+    }
+    h += `<div class="section-header" style="margin-top:25px">2. 팀 별 주간업무보고</div>`;
+    if (parsedTeamData) {
+        const dl = {'디자인실':'① 디자인실','프로그램실':'② 프로그램실','아트실':'③ 아트실'};
+        for (const dept of ['디자인실','프로그램실','아트실']) {
+            if (!parsedTeamData[dept]) continue;
+            h += `<div class="dept-header">${dl[dept]}</div>`;
+            renderTeamSection(parsedTeamData[dept], dept, (type, ...args) => {
+                if (type==='team') h += `<div class="team-header">${args[0]}. ${args[1]}</div>`;
+                else if (type==='workType') h += `<div class="work-type">● ${args[0]}</div>`;
+                else if (type==='group') h += `<div class="work-item"><b>○ ${esc(args[0])}</b></div>`;
+                else if (type==='sub') h += `<div class="work-sub-item">- ${esc(args[0])}</div>`;
+                else if (type==='subsub') h += `<div class="work-sub-item" style="margin-left:20px">- ${esc(args[0])}</div>`;
+                else h += `<div class="work-item">○ ${esc(args[0])}</div>`;
+            });
+        }
+    } else { h += `<div style="margin-left:44px;color:#aaa;">엑셀 파일을 업로드하면 팀 보고서가 표시됩니다.</div>`; }
+    h += `<div style="margin-top:30px;text-align:center;color:#aaa;font-size:12px">끝.</div>`;
+    return h;
+}
+
+function buildReportText(dateStr, weekInfo, domEv, glEv) {
+    let t = `안녕하세요.\n매드스튜디오 나이트크로우 주간업무보고를 전체 공유 드립니다.\n\n현재까지 확정된 스펙 및 일감들은 하기 경로에 있는 로드맵 문서 및 JIRA에서 확인이 가능하니 참고 부탁드립니다.\n※ 로드맵 문서 경로: //Depot/Main/Common/ProjectM_Roadmap.xlsx\n\n주간업무보고를 전사에 공유 드리는 주된 목적은 스튜디오 내, 타 팀에서 어떠한 작업을 진행하고 있는지에 대한 정보 공유입니다.\n\n추가적으로 궁금하시거나 문의 주실 부분이 있으시다면 편하신 채널로 연락 부탁드립니다.\n\n감사합니다.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n[ 매드스튜디오 주간업무보고 ]\n${weekInfo}\n\n1. 예정된 중요 이벤트 공유\n`;
+    if (domEv.trim()) {
+        t += `    ① 국내\n`; let evi1 = 0; const rr = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+        parseEventText(domEv).forEach(e => { t += e.type==='title' ? `        ${rr[evi1++]||evi1}. ${e.text}\n` : `            ● ${e.text}\n`; });
+    }
+    if (glEv.trim()) {
+        t += `    ② 글로벌\n`; let evi2 = 0; const rr2 = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+        parseEventText(glEv).forEach(e => { t += e.type==='title' ? `        ${rr2[evi2++]||evi2}. ${e.text}\n` : `            ● ${e.text}\n`; });
+    }
+    t += `\n2. 팀 별 주간업무보고\n`;
+    if (parsedTeamData) {
+        const dl = {'디자인실':'① 디자인실','프로그램실':'② 프로그램실','아트실':'③ 아트실'};
+        for (const dept of ['디자인실','프로그램실','아트실']) {
+            if (!parsedTeamData[dept]) continue;
+            t += `    ${dl[dept]}\n`;
+            renderTeamSection(parsedTeamData[dept], dept, (type, ...args) => {
+                if (type==='team') t += `        ${args[0]}. ${args[1]}\n`;
+                else if (type==='workType') t += `            ● ${args[0]}\n`;
+                else if (type==='group') t += `                ○ ${args[0]}\n`;
+                else if (type==='sub') t += `                    - ${args[0]}\n`;
+                else if (type==='subsub') t += `                        - ${args[0]}\n`;
+                else t += `                ○ ${args[0]}\n`;
+            });
+        }
+    }
+    t += `\n끝.`;
+    return t;
+}
+
+function buildEmailHtml(dateStr, weekInfo, domEv, glEv) {
+    // Outlook 네이티브 MSO 리스트 양식 사용
+    // Microsoft Word 15 호환 HTML: @list 정의 + mso-list 인라인 + 조건부 주석
+    // Symbol 폰트 · → Outlook에서 작은 ● 렌더링
+    // Courier New o → Outlook에서 작은 ○ 렌더링
+    const F = `"맑은 고딕","Malgun Gothic",sans-serif`;
+    const romans = ['i','ii','iii','iv','v','vi','vii','viii','ix','x'];
+
+    let h = '';
+    // Word 네임스페이스 선언 — Outlook이 Word HTML로 인식하도록
+    h += `<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">\n`;
+    h += `<head>\n`;
+    h += `<meta http-equiv="Content-Type" content="text/html; charset=utf-8">\n`;
+    h += `<meta name="Generator" content="Microsoft Word 15 (filtered medium)">\n`;
+    h += `<!--[if gte mso 9]><xml>\n<o:OfficeDocumentSettings>\n<o:AllowPNG/>\n</o:OfficeDocumentSettings>\n</xml><![endif]-->\n`;
+    h += `<style>\n`;
+    h += `p.MsoNormal, li.MsoNormal, div.MsoNormal\n`;
+    h += `\t{margin:0;\n\tfont-size:10.0pt;\n\tfont-family:${F};\n\tcolor:#333333;\n\tline-height:150%;}\n`;
+    h += `p.MsoListParagraph, li.MsoListParagraph, div.MsoListParagraph\n`;
+    h += `\t{margin:0;\n\tmargin-left:.75in;\n\tfont-size:10.0pt;\n\tfont-family:${F};\n\tcolor:#333333;\n\tline-height:150%;}\n`;
+    // 단일 리스트 l0: 5개 레벨 (●→○→-→-→-) — tab-stop+margin 매칭
+    h += `@list l0\n\t{mso-list-id:1;\n\tmso-list-template-ids:-1;}\n`;
+    h += `@list l0:level1\n`;
+    h += `\t{mso-level-number-format:bullet;\n`;
+    h += `\tmso-level-text:\\F0B7;\n`;
+    h += `\tmso-level-tab-stop:.75in;\n`;
+    h += `\tmso-level-number-position:left;\n`;
+    h += `\ttext-indent:-.25in;\n`;
+    h += `\tfont-family:Symbol;}\n`;
+    h += `@list l0:level2\n`;
+    h += `\t{mso-level-number-format:bullet;\n`;
+    h += `\tmso-level-text:o;\n`;
+    h += `\tmso-level-tab-stop:1.0in;\n`;
+    h += `\tmso-level-number-position:left;\n`;
+    h += `\ttext-indent:-.25in;\n`;
+    h += `\tfont-family:"Courier New";}\n`;
+    h += `@list l0:level3\n`;
+    h += `\t{mso-level-number-format:bullet;\n`;
+    h += `\tmso-level-text:\\F02D;\n`;
+    h += `\tmso-level-tab-stop:1.25in;\n`;
+    h += `\tmso-level-number-position:left;\n`;
+    h += `\ttext-indent:-.25in;\n`;
+    h += `\tfont-family:Symbol;}\n`;
+    h += `@list l0:level4\n`;
+    h += `\t{mso-level-number-format:bullet;\n`;
+    h += `\tmso-level-text:\\F02D;\n`;
+    h += `\tmso-level-tab-stop:1.5in;\n`;
+    h += `\tmso-level-number-position:left;\n`;
+    h += `\ttext-indent:-.25in;\n`;
+    h += `\tfont-family:Symbol;}\n`;
+    h += `@list l0:level5\n`;
+    h += `\t{mso-level-number-format:bullet;\n`;
+    h += `\tmso-level-text:\\F02D;\n`;
+    h += `\tmso-level-tab-stop:1.75in;\n`;
+    h += `\tmso-level-number-position:left;\n`;
+    h += `\ttext-indent:-.25in;\n`;
+    h += `\tfont-family:Symbol;}\n`;
+    h += `</style>\n`;
+    h += `</head>\n`;
+    h += `<body lang=KO style="font-size:10.0pt;font-family:${F};color:#333333;">\n`;
+
+    // 일반 문단 헬퍼
+    const pn = (text, ml) => {
+        const s = ml ? ` style='margin-left:${(ml/72).toFixed(2)}in'` : '';
+        return `<p class=MsoNormal${s}>${text}</p>\n`;
+    };
+    // MSO 리스트 불릿 헬퍼 — 모든 레벨에 인라인 margin-left 명시
+    // level: 1=● (.75in), 2=○ (1.0in), 3=- (1.25in), 4=- (1.5in), 5=- (1.75in)
+    const levelMargins = ['', '.75in', '1.0in', '1.25in', '1.5in', '1.75in'];
+    const li = (level, text) => {
+        let bc, bf, sp;
+        if (level === 1) {
+            bc = '\u00B7'; bf = 'Symbol';
+            sp = `<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
+        } else if (level === 2) {
+            bc = 'o'; bf = '"Courier New"';
+            sp = `<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
+        } else {
+            bc = '-'; bf = 'Symbol';
+            sp = `<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>`;
+        }
+        const bullet = `<span style='font-family:${bf}'><span style='mso-list:Ignore'>${bc}${sp}</span></span>`;
+        // 모든 레벨에 명시적 margin-left — Outlook이 무시하지 않도록
+        return `<p class=MsoListParagraph style='margin-left:${levelMargins[level]};text-indent:-.25in;mso-list:l0 level${level} lfo1'><![if !supportLists]>${bullet}<![endif]>${text}</p>\n`;
+    };
+
+    // 인트로
+    h += pn('안녕하세요.<br>매드스튜디오 나이트크로우 주간업무보고를 전체 공유 드립니다.');
+    h += pn('&nbsp;');
+    h += pn('현재까지 확정된 스펙 및 일감들은 하기 경로에 있는 로드맵 문서 및 JIRA에서 확인이 가능하니 참고 부탁드립니다.<br>※ 로드맵 문서 경로: //Depot/Main/Common/ProjectM_Roadmap.xlsx');
+    h += pn('&nbsp;');
+    h += pn('주간업무보고를 전사에 공유 드리는 주된 목적은 스튜디오 내, 타 팀에서 어떠한 작업을 진행하고 있는지에 대한 정보 공유입니다.');
+    h += pn('&nbsp;');
+    h += pn('추가적으로 궁금하시거나 문의 주실 부분이 있으시다면 편하신 채널로 연락 부탁드립니다.');
+    h += pn('&nbsp;');
+    h += pn('감사합니다.');
+    h += `<hr style="border:none;border-top:1.0pt solid #333333;">\n`;
+    h += `<p class=MsoNormal style='font-size:12.0pt'><b>[ 매드스튜디오 주간업무보고 ]</b></p>\n`;
+    h += pn(weekInfo);
+    h += pn('&nbsp;');
+
+    // 1. 예정된 중요 이벤트 공유
+    h += pn('<b>1. 예정된 중요 이벤트 공유</b>');
+    if (domEv.trim()) {
+        h += pn('<b>\u2460 국내</b>', 18.0);
+        let evIdx = 0;
+        parseEventText(domEv).forEach(e => {
+            if (e.type === 'title') h += pn(`${romans[evIdx++] || String(evIdx)}. ${esc(e.text)}`, 36.0);
+            else h += li(1, esc(e.text));
+        });
+    }
+    if (glEv.trim()) {
+        h += pn('<b>\u2461 글로벌</b>', 18.0);
+        let evIdx = 0;
+        parseEventText(glEv).forEach(e => {
+            if (e.type === 'title') h += pn(`${romans[evIdx++] || String(evIdx)}. ${esc(e.text)}`, 36.0);
+            else h += li(1, esc(e.text));
+        });
+    }
+    h += pn('&nbsp;');
+
+    // 2. 팀 별 주간업무보고
+    h += pn('<b>2. 팀 별 주간업무보고</b>');
+    if (parsedTeamData) {
+        const dl = {'디자인실':'\u2460 디자인실','프로그램실':'\u2461 프로그램실','아트실':'\u2462 아트실'};
+        for (const dept of ['디자인실','프로그램실','아트실']) {
+            if (!parsedTeamData[dept]) continue;
+            h += pn(`<b><u>${dl[dept]}</u></b>`, 18.0);
+            renderTeamSection(parsedTeamData[dept], dept, (type, ...args) => {
+                if (type==='team') h += pn(`${args[0]}. ${args[1]}`, 36.0);
+                else if (type==='workType') h += li(1, `<b>${args[0]}</b>`);
+                else if (type==='group') h += li(2, `<b>${esc(args[0])}</b>`);
+                else if (type==='sub') h += li(3, esc(args[0]));
+                else if (type==='subsub') h += li(4, esc(args[0]));
+                else h += li(2, esc(args[0]));
+            });
+        }
+    }
+    h += pn('&nbsp;');
+    h += `<p class=MsoNormal style='text-align:center'>끝.</p>\n`;
+    h += `</body></html>`;
+    return h;
+}
+
+// ========== Actions ==========
+function copyToClipboard() {
+    const text = document.getElementById('reportText').value;
+    if (!text) { showToast('먼저 보고서를 생성하세요'); return; }
+    navigator.clipboard.writeText(text).then(() => showToast('텍스트가 클립보드에 복사되었습니다'));
+}
+
+function copyHtmlToClipboard() {
+    const html = document.getElementById('reportHtml').value;
+    if (!html) { showToast('먼저 보고서를 생성하세요'); return; }
+    // Outlook 호환: HTML을 숨겨진 div에 렌더링 후 execCommand('copy')로 복사
+    // ClipboardItem API는 Outlook에서 스타일이 무시되므로 사용하지 않음
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const bodyContent = bodyMatch ? bodyMatch[1] : html;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bodyContent;
+    tempDiv.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0.01;background:#fff;color:#333;font-size:10pt;font-family:맑은 고딕,Malgun Gothic,sans-serif;width:800px;';
+    document.body.appendChild(tempDiv);
+    const range = document.createRange();
+    range.selectNodeContents(tempDiv);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    try {
+        document.execCommand('copy');
+        showToast('HTML 복사 완료 — 이메일에 Ctrl+V로 붙여넣기');
+    } catch(e) {
+        navigator.clipboard.writeText(document.getElementById('reportText').value)
+            .then(() => showToast('텍스트로 복사되었습니다'));
+    }
+    sel.removeAllRanges();
+    document.body.removeChild(tempDiv);
+}
+
+function openInOutlook() {
+    const reportDate = document.getElementById('reportDate').value;
+    if (!reportDate) { showToast('보고 날짜를 선택하세요'); return; }
+    const htmlBody = document.getElementById('reportHtml').value;
+    if (!htmlBody) { showToast('먼저 보고서를 생성하세요'); return; }
+    const d = new Date(reportDate);
+    const dateStr = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+    const subject = `[주간업무보고] ${dateStr} 매드스튜디오`;
+
+    // UTF-8 → Base64 변환
+    function utf8ToBase64(str) {
+        const bytes = new TextEncoder().encode(str);
+        let bin = '';
+        for (const b of bytes) bin += String.fromCharCode(b);
+        return btoa(bin);
+    }
+    // Base64를 76자 줄로 분할 (RFC 2045)
+    function wrapBase64(b64) {
+        return b64.match(/.{1,76}/g).join('\r\n');
+    }
+
+    const mailTo = document.getElementById('mailTo').value.trim();
+    const mailCc = document.getElementById('mailCc').value.trim();
+
+    const subjectB64 = utf8ToBase64(subject);
+    const bodyB64 = wrapBase64(utf8ToBase64(htmlBody));
+
+    const emlHeaders = [
+        `MIME-Version: 1.0`,
+        `Subject: =?UTF-8?B?${subjectB64}?=`,
+        `To: ${mailTo}`,
+        `Cc: ${mailCc}`,
+    ];
+    emlHeaders.push(
+        `Content-Type: text/html; charset="UTF-8"`,
+        `Content-Transfer-Encoding: base64`,
+        `X-Unsent: 1`,
+        ``,
+        bodyB64
+    );
+    const eml = emlHeaders.join('\r\n');
+
+    const blob = new Blob([eml], { type: 'message/rfc822' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `주간업무보고_${dateStr.replace(/\//g,'')}.eml`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('EML 파일 다운로드 완료 — 파일을 열면 Outlook에서 편집 가능합니다');
+}
+
+// ========== Helpers ==========
+function getOrderedTeams(dept, actualTeamNames) {
+    const pref = DEPT_TEAM_ORDER[dept] || [];
+    const ordered = [], used = new Set();
+    for (const p of pref) {
+        for (const a of actualTeamNames) {
+            if (used.has(a)) continue;
+            if (a === p || a.replace(/\s/g,'') === p.replace(/\s/g,'')) { ordered.push(a); used.add(a); break; }
+        }
+    }
+    for (const a of actualTeamNames) { if (!used.has(a)) ordered.push(a); }
+    return ordered;
+}
+
+function switchTab(name, btn) {
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function showToast(msg) {
+    const toast = document.getElementById('toast');
+    document.getElementById('toastText').textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
